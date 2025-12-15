@@ -5,6 +5,7 @@ package auth.v1;
 option go_package = "github.com/user/spa_auth/api/gen/auth/v1;authv1";
 
 import "google/protobuf/timestamp.proto";
+import "common.proto";
 
 // =============================================================================
 // Authentication Service
@@ -122,29 +123,4 @@ message ResetPasswordResponse {
   string message = 2;
 }
 
-// =============================================================================
-// Common Types
-// =============================================================================
-
-// User represents an authenticated user
-message User {
-  string id = 1;                                  // UUID
-  string email = 2;                               // Email address
-  bool is_active = 3;                             // Account active status
-  repeated string roles = 4;                      // Assigned role names
-  bool has_password = 5;                          // Has password auth enabled
-  bool has_google = 6;                            // Has Google OAuth linked
-  google.protobuf.Timestamp created_at = 7;      // Account creation time
-  google.protobuf.Timestamp last_login_at = 8;   // Last successful login
-}
-
-// Session represents an active session
-message Session {
-  string id = 1;                                  // Session UUID
-  string user_id = 2;                             // User UUID
-  google.protobuf.Timestamp expires_at = 3;      // Session expiration
-  google.protobuf.Timestamp last_activity_at = 4; // Last activity
-  string ip_address = 5;                          // Client IP
-  string user_agent = 6;                          // Client user agent
-  google.protobuf.Timestamp created_at = 7;      // Session creation
-}
+// User and Session types are defined in common.proto

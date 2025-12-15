@@ -4,7 +4,7 @@ package auth.v1;
 
 option go_package = "github.com/user/spa_auth/api/gen/auth/v1;authv1";
 
-import "google/protobuf/timestamp.proto";
+import "common.proto";
 
 // =============================================================================
 // User Management Service (Super Admin Only)
@@ -109,19 +109,4 @@ message DeleteUserResponse {
   string message = 2;
 }
 
-// =============================================================================
-// Common Types (shared with auth.proto)
-// =============================================================================
-
-// User represents an authenticated user
-message User {
-  string id = 1;                                  // UUID
-  string email = 2;                               // Email address
-  bool is_active = 3;                             // Account active status
-  repeated string roles = 4;                      // Assigned role names
-  bool has_password = 5;                          // Has password auth enabled
-  bool has_google = 6;                            // Has Google OAuth linked
-  google.protobuf.Timestamp created_at = 7;      // Account creation time
-  google.protobuf.Timestamp last_login_at = 8;   // Last successful login
-  string created_by = 9;                          // UUID of admin who created this user
-}
+// User type is defined in common.proto

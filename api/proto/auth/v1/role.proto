@@ -4,7 +4,7 @@ package auth.v1;
 
 option go_package = "github.com/user/spa_auth/api/gen/auth/v1;authv1";
 
-import "google/protobuf/timestamp.proto";
+import "common.proto";
 
 // =============================================================================
 // Role CRUD (Super Admin Only)
@@ -190,35 +190,4 @@ message GetUserSectionsResponse {
   repeated SpaSection sections = 1;
 }
 
-// =============================================================================
-// Common Types
-// =============================================================================
-
-// Role represents a configurable permission level
-message Role {
-  string id = 1;                              // UUID
-  string name = 2;                            // Role name (e.g., viewer, editor, custom_role)
-  string description = 3;                     // Human-readable description
-  bool is_system = 4;                         // True for system roles (super_admin) that cannot be modified
-  repeated SpaSection sections = 5;           // SPA sections this role can access
-  google.protobuf.Timestamp created_at = 6;   // Role creation time
-  google.protobuf.Timestamp updated_at = 7;   // Last update time
-  string created_by = 8;                      // UUID of admin who created this role
-}
-
-// SpaSection represents a section/route in the SPA
-message SpaSection {
-  string id = 1;                              // UUID
-  string key = 2;                             // Section identifier (e.g., "dashboard", "settings")
-  string display_name = 3;                    // Human-readable name for UI
-  string description = 4;                     // Description of the section
-  google.protobuf.Timestamp created_at = 5;  // Section creation time
-}
-
-// RoleAssignment represents a user-role association
-message RoleAssignment {
-  string user_id = 1;                            // User UUID
-  string role_id = 2;                            // Role UUID
-  google.protobuf.Timestamp assigned_at = 3;    // When role was assigned
-  string assigned_by = 4;                        // UUID of admin who assigned
-}
+// Role, SpaSection types are defined in common.proto

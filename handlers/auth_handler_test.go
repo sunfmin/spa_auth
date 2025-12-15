@@ -8,9 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	pb "github.com/user/spa_auth/api/gen/auth/v1"
 	"github.com/user/spa_auth/handlers"
 	"github.com/user/spa_auth/services"
 	"github.com/user/spa_auth/testutil"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestAuthHandler_Login(t *testing.T) {
@@ -40,38 +42,50 @@ func TestAuthHandler_Login(t *testing.T) {
 	passwordSvc := services.NewPasswordService(tdb.DB).Build()
 	jwtSvc := services.NewJWTService("test-secret-key-32-bytes-long!!").Build()
 	sessionSvc := services.NewSessionService(tdb.DB).Build()
-	authSvc := services.NewAuthService(tdb.DB).WithPasswordService(passwordSvc).Build()
+	authSvc := services.NewAuthService(tdb.DB).
+		WithPasswordService(passwordSvc).
+		WithJWTService(jwtSvc).
+		WithSessionService(sessionSvc).
+		Build()
 
 	mux := handlers.NewRouter().
 		WithAuthService(authSvc).
-		WithJWTService(jwtSvc).
-		WithSessionService(sessionSvc).
-		WithPasswordService(passwordSvc).
 		Build()
 
 	testCases := []struct {
 		name           string
 		scenario       string
-		requestBody    map[string]string
+		request        *pb.LoginRequest
 		expectedStatus int
 		expectedCode   string
+		validateResp   func(t *testing.T, resp *pb.LoginResponse)
 	}{
 		{
 			name:     "US1-AS1: Successful login with valid credentials",
 			scenario: "Given a user account created by the super admin, When the user enters their correct email and password, Then the system authenticates them",
-			requestBody: map[string]string{
-				"email":    "user@example.com",
-				"password": "userpass123",
+			request: &pb.LoginRequest{
+				Email:    "user@example.com",
+				Password: "userpass123",
 			},
 			expectedStatus: http.StatusOK,
-			expectedCode:   "",
+			validateResp: func(t *testing.T, resp *pb.LoginResponse) {
+				if resp.AccessToken == "" {
+					t.Error("Expected accessToken in response")
+				}
+				if resp.User == nil {
+					t.Error("Expected user in response")
+				}
+				if resp.User.Email != "user@example.com" {
+					t.Errorf("Expected email user@example.com, got %s", resp.User.Email)
+				}
+			},
 		},
 		{
 			name:     "US1-AS2: Login fails with incorrect password",
 			scenario: "Given a user on the login page, When they enter an incorrect password, Then the system displays an error message",
-			requestBody: map[string]string{
-				"email":    "user@example.com",
-				"password": "wrongpassword",
+			request: &pb.LoginRequest{
+				Email:    "user@example.com",
+				Password: "wrongpassword",
 			},
 			expectedStatus: http.StatusUnauthorized,
 			expectedCode:   "INVALID_CREDENTIALS",
@@ -79,9 +93,9 @@ func TestAuthHandler_Login(t *testing.T) {
 		{
 			name:     "Edge case: Empty email",
 			scenario: "Empty email field should return validation error",
-			requestBody: map[string]string{
-				"email":    "",
-				"password": "somepassword",
+			request: &pb.LoginRequest{
+				Email:    "",
+				Password: "somepassword",
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "INVALID_EMAIL",
@@ -89,9 +103,9 @@ func TestAuthHandler_Login(t *testing.T) {
 		{
 			name:     "Edge case: Empty password",
 			scenario: "Empty password field should return validation error",
-			requestBody: map[string]string{
-				"email":    "user@example.com",
-				"password": "",
+			request: &pb.LoginRequest{
+				Email:    "user@example.com",
+				Password: "",
 			},
 			expectedStatus: http.StatusUnauthorized,
 			expectedCode:   "INVALID_CREDENTIALS",
@@ -99,9 +113,9 @@ func TestAuthHandler_Login(t *testing.T) {
 		{
 			name:     "Edge case: User not found",
 			scenario: "Non-existent email should return invalid credentials (security: don't reveal if email exists)",
-			requestBody: map[string]string{
-				"email":    "nonexistent@example.com",
-				"password": "somepassword",
+			request: &pb.LoginRequest{
+				Email:    "nonexistent@example.com",
+				Password: "somepassword",
 			},
 			expectedStatus: http.StatusUnauthorized,
 			expectedCode:   "INVALID_CREDENTIALS",
@@ -109,9 +123,9 @@ func TestAuthHandler_Login(t *testing.T) {
 		{
 			name:     "Edge case: Inactive user cannot login",
 			scenario: "Deactivated user should not be able to login",
-			requestBody: map[string]string{
-				"email":    "inactive@example.com",
-				"password": "inactivepass",
+			request: &pb.LoginRequest{
+				Email:    "inactive@example.com",
+				Password: "inactivepass",
 			},
 			expectedStatus: http.StatusForbidden,
 			expectedCode:   "USER_INACTIVE",
@@ -120,7 +134,7 @@ func TestAuthHandler_Login(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			body, _ := json.Marshal(tc.requestBody)
+			body, _ := protojson.Marshal(tc.request)
 			req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
@@ -132,26 +146,21 @@ func TestAuthHandler_Login(t *testing.T) {
 			}
 
 			if tc.expectedCode != "" {
-				var resp handlers.ErrorResponse
-				if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				var errResp handlers.ErrorResponse
+				if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
 					t.Fatalf("Failed to parse error response: %v", err)
 				}
-				if resp.Code != tc.expectedCode {
-					t.Errorf("Expected error code %s, got %s", tc.expectedCode, resp.Code)
+				if errResp.Code != tc.expectedCode {
+					t.Errorf("Expected error code %s, got %s", tc.expectedCode, errResp.Code)
 				}
 			}
 
-			if tc.expectedStatus == http.StatusOK {
-				var resp map[string]interface{}
-				if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			if tc.expectedStatus == http.StatusOK && tc.validateResp != nil {
+				var resp pb.LoginResponse
+				if err := protojson.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 					t.Fatalf("Failed to parse success response: %v", err)
 				}
-				if resp["accessToken"] == nil {
-					t.Error("Expected accessToken in response")
-				}
-				if resp["user"] == nil {
-					t.Error("Expected user in response")
-				}
+				tc.validateResp(t, &resp)
 			}
 		})
 	}
@@ -170,7 +179,11 @@ func TestAuthHandler_Logout(t *testing.T) {
 	passwordSvc := services.NewPasswordService(tdb.DB).Build()
 	jwtSvc := services.NewJWTService("test-secret-key-32-bytes-long!!").Build()
 	sessionSvc := services.NewSessionService(tdb.DB).Build()
-	authSvc := services.NewAuthService(tdb.DB).WithPasswordService(passwordSvc).Build()
+	authSvc := services.NewAuthService(tdb.DB).
+		WithPasswordService(passwordSvc).
+		WithJWTService(jwtSvc).
+		WithSessionService(sessionSvc).
+		Build()
 
 	tokenPair, err := jwtSvc.GenerateTokenPair(context.Background(), testUser.ID, testUser.Email, []string{"viewer"}, []string{"dashboard"})
 	if err != nil {
@@ -184,9 +197,6 @@ func TestAuthHandler_Logout(t *testing.T) {
 
 	mux := handlers.NewRouter().
 		WithAuthService(authSvc).
-		WithJWTService(jwtSvc).
-		WithSessionService(sessionSvc).
-		WithPasswordService(passwordSvc).
 		Build()
 
 	testCases := []struct {
@@ -240,13 +250,14 @@ func TestAuthHandler_UnauthenticatedAccess(t *testing.T) {
 	passwordSvc := services.NewPasswordService(tdb.DB).Build()
 	jwtSvc := services.NewJWTService("test-secret-key-32-bytes-long!!").Build()
 	sessionSvc := services.NewSessionService(tdb.DB).Build()
-	authSvc := services.NewAuthService(tdb.DB).WithPasswordService(passwordSvc).Build()
+	authSvc := services.NewAuthService(tdb.DB).
+		WithPasswordService(passwordSvc).
+		WithJWTService(jwtSvc).
+		WithSessionService(sessionSvc).
+		Build()
 
 	mux := handlers.NewRouter().
 		WithAuthService(authSvc).
-		WithJWTService(jwtSvc).
-		WithSessionService(sessionSvc).
-		WithPasswordService(passwordSvc).
 		Build()
 
 	t.Run("US1-AS4: Unauthenticated access to /me returns 401", func(t *testing.T) {

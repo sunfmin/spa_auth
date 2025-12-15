@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/user/spa_auth/api/gen/auth/v1;authv1";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Common Types (shared across all services)
+// =============================================================================
+
+// User represents an authenticated user
+message User {
+  string id = 1;                                  // UUID
+  string email = 2;                               // Email address
+  bool is_active = 3;                             // Account active status
+  repeated string roles = 4;                      // Assigned role names
+  repeated string sections = 5;                   // Accessible SPA sections
+  bool has_password = 6;                          // Has password auth enabled
+  bool has_google = 7;                            // Has Google OAuth linked
+  google.protobuf.Timestamp created_at = 8;       // Account creation time
+  google.protobuf.Timestamp last_login_at = 9;    // Last successful login
+  string created_by = 10;                         // UUID of admin who created this user
+}
+
+// Session represents an active session
+message Session {
+  string id = 1;                                  // Session UUID
+  string user_id = 2;                             // User UUID
+  google.protobuf.Timestamp expires_at = 3;       // Session expiration
+  google.protobuf.Timestamp last_activity_at = 4; // Last activity
+  string ip_address = 5;                          // Client IP
+  string user_agent = 6;                          // Client user agent
+  google.protobuf.Timestamp created_at = 7;       // Session creation
+}
+
+// Role represents a configurable permission level
+message Role {
+  string id = 1;                                  // UUID
+  string name = 2;                                // Role name
+  string description = 3;                         // Human-readable description
+  bool is_system = 4;                             // True for system roles that cannot be modified
+  repeated SpaSection sections = 5;               // SPA sections this role can access
+  google.protobuf.Timestamp created_at = 6;       // Role creation time
+  google.protobuf.Timestamp updated_at = 7;       // Last update time
+  string created_by = 8;                          // UUID of admin who created this role
+}
+
+// SpaSection represents a section/route in the SPA
+message SpaSection {
+  string id = 1;                                  // UUID
+  string key = 2;                                 // Section identifier
+  string display_name = 3;                        // Human-readable name for UI
+  string description = 4;                         // Description of the section
+  google.protobuf.Timestamp created_at = 5;       // Section creation time
+}

@@ -79,7 +79,7 @@ var (
 	ErrCodeTokenInvalid = ErrorCode{
 		Code:       "TOKEN_INVALID",
 		Message:    "Token is invalid",
-		HTTPStatus: http.StatusBadRequest,
+		HTTPStatus: http.StatusUnauthorized,
 		ServiceErr: services.ErrTokenInvalid,
 	}
 	ErrCodeTokenAlreadyUsed = ErrorCode{

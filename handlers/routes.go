@@ -73,7 +73,7 @@ func (b *routerBuilder) Build() http.Handler {
 	mux.HandleFunc("GET /health", healthHandler)
 
 	if b.authService != nil {
-		h := NewAuthHandler(b.authService, b.jwtService, b.sessionService, b.passwordService)
+		h := NewAuthHandler(b.authService)
 		mux.HandleFunc("POST /api/v1/auth/login", h.Login)
 		mux.HandleFunc("POST /api/v1/auth/logout", h.Logout)
 		mux.HandleFunc("GET /api/v1/auth/me", h.GetCurrentUser)
