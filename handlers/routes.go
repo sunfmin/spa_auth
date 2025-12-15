@@ -12,6 +12,7 @@ type Middleware func(http.Handler) http.Handler
 type routerBuilder struct {
 	mux             *http.ServeMux
 	authService     services.AuthService
+	oauthService    services.OAuthService
 	userService     services.UserService
 	roleService     services.RoleService
 	sessionService  services.SessionService
@@ -31,6 +32,11 @@ func (b *routerBuilder) WithMux(mux *http.ServeMux) *routerBuilder {
 
 func (b *routerBuilder) WithAuthService(svc services.AuthService) *routerBuilder {
 	b.authService = svc
+	return b
+}
+
+func (b *routerBuilder) WithOAuthService(svc services.OAuthService) *routerBuilder {
+	b.oauthService = svc
 	return b
 }
 
@@ -64,6 +70,28 @@ func (b *routerBuilder) WithMiddlewares(mws ...Middleware) *routerBuilder {
 	return b
 }
 
+func DefaultMiddlewares() []Middleware {
+	return []Middleware{
+		RecoveryMiddleware,
+	}
+}
+
+func RecoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{
+					"code":    "INTERNAL_ERROR",
+					"message": "An internal error occurred",
+				})
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (b *routerBuilder) Build() http.Handler {
 	mux := b.mux
 	if mux == nil {
@@ -74,6 +102,9 @@ func (b *routerBuilder) Build() http.Handler {
 
 	if b.authService != nil {
 		h := NewAuthHandler(b.authService)
+		if b.oauthService != nil {
+			h.WithOAuthService(b.oauthService)
+		}
 		mux.HandleFunc("POST /api/v1/auth/login", h.Login)
 		mux.HandleFunc("POST /api/v1/auth/logout", h.Logout)
 		mux.HandleFunc("GET /api/v1/auth/me", h.GetCurrentUser)

@@ -1,0 +1,14 @@
+{
+  "name": "auth-validator",
+  "version": "1.0.0",
+  "description": "Lambda@Edge JWT validator for SPA authentication",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

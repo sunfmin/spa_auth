@@ -124,6 +124,12 @@ var (
 		HTTPStatus: http.StatusForbidden,
 		ServiceErr: services.ErrOAuthEmailNotFound,
 	}
+	ErrCodeOAuthStateMismatch = ErrorCode{
+		Code:       "OAUTH_STATE_MISMATCH",
+		Message:    "OAuth state mismatch",
+		HTTPStatus: http.StatusBadRequest,
+		ServiceErr: services.ErrOAuthStateMismatch,
+	}
 	ErrCodeSectionNotFound = ErrorCode{
 		Code:       "SECTION_NOT_FOUND",
 		Message:    "SPA section not found",
@@ -180,6 +186,7 @@ var errorCodeRegistry = []ErrorCode{
 	ErrCodePasswordTooShort,
 	ErrCodeInvalidEmail,
 	ErrCodeOAuthEmailNotFound,
+	ErrCodeOAuthStateMismatch,
 	ErrCodeSectionNotFound,
 	ErrCodeInvalidID,
 	ErrCodeInvalidRoleName,

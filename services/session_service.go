@@ -17,6 +17,7 @@ type SessionService interface {
 	InvalidateSession(ctx context.Context, sessionID uuid.UUID) error
 	InvalidateAllUserSessions(ctx context.Context, userID uuid.UUID) error
 	UpdateActivity(ctx context.Context, sessionID uuid.UUID) error
+	UpdateSessionTokens(ctx context.Context, sessionID uuid.UUID, newTokenHash, newRefreshTokenHash string) error
 }
 
 type sessionService struct {
@@ -125,4 +126,15 @@ func (s *sessionService) UpdateActivity(ctx context.Context, sessionID uuid.UUID
 		Model(&models.Session{}).
 		Where("id = ?", sessionID).
 		Update("last_activity_at", time.Now()).Error
+}
+
+func (s *sessionService) UpdateSessionTokens(ctx context.Context, sessionID uuid.UUID, newTokenHash, newRefreshTokenHash string) error {
+	return s.db.WithContext(ctx).
+		Model(&models.Session{}).
+		Where("id = ?", sessionID).
+		Updates(map[string]interface{}{
+			"token_hash":         newTokenHash,
+			"refresh_token_hash": newRefreshTokenHash,
+			"last_activity_at":   time.Now(),
+		}).Error
 }

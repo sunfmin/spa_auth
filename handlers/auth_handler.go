@@ -9,11 +9,17 @@ import (
 )
 
 type AuthHandler struct {
-	authService services.AuthService
+	authService  services.AuthService
+	oauthService services.OAuthService
 }
 
 func NewAuthHandler(authService services.AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
+}
+
+func (h *AuthHandler) WithOAuthService(oauthService services.OAuthService) *AuthHandler {
+	h.oauthService = oauthService
+	return h
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -85,31 +91,115 @@ func extractBearerToken(r *http.Request) string {
 }
 
 func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement in US7
-	RespondWithError(w, ErrCodeInternalError, nil)
+	ctx := r.Context()
+
+	var req pb.RefreshTokenRequest
+	if err := DecodeProtoJSON(r, &req); err != nil {
+		RespondWithError(w, ErrCodeBadRequest, err)
+		return
+	}
+
+	resp, err := h.authService.RefreshToken(ctx, &req)
+	if err != nil {
+		HandleServiceError(w, err)
+		return
+	}
+
+	RespondWithProto(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement in US7
-	RespondWithError(w, ErrCodeInternalError, nil)
+	ctx := r.Context()
+
+	var req pb.ValidateTokenRequest
+	if err := DecodeProtoJSON(r, &req); err != nil {
+		RespondWithError(w, ErrCodeBadRequest, err)
+		return
+	}
+
+	resp, err := h.authService.ValidateToken(ctx, &req)
+	if err != nil {
+		HandleServiceError(w, err)
+		return
+	}
+
+	RespondWithProto(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) OAuthGoogleStart(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement in US2
-	RespondWithError(w, ErrCodeInternalError, nil)
+	ctx := r.Context()
+
+	var req pb.OAuthStartRequest
+	// Allow empty body for GET request
+	if r.ContentLength > 0 {
+		if err := DecodeProtoJSON(r, &req); err != nil {
+			RespondWithError(w, ErrCodeBadRequest, err)
+			return
+		}
+	}
+
+	resp, err := h.oauthService.StartOAuth(ctx, &req)
+	if err != nil {
+		HandleServiceError(w, err)
+		return
+	}
+
+	RespondWithProto(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) OAuthGoogleCallback(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement in US2
-	RespondWithError(w, ErrCodeInternalError, nil)
+	ctx := r.Context()
+
+	// Get code and state from query params (Google redirects with GET)
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+
+	req := &pb.OAuthCallbackRequest{
+		Code:  code,
+		State: state,
+	}
+
+	resp, err := h.oauthService.HandleCallback(ctx, req)
+	if err != nil {
+		HandleServiceError(w, err)
+		return
+	}
+
+	RespondWithProto(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement in US6
-	RespondWithError(w, ErrCodeInternalError, nil)
+	ctx := r.Context()
+
+	var req pb.RequestPasswordResetRequest
+	if err := DecodeProtoJSON(r, &req); err != nil {
+		RespondWithError(w, ErrCodeBadRequest, err)
+		return
+	}
+
+	resp, err := h.authService.RequestPasswordReset(ctx, &req)
+	if err != nil {
+		HandleServiceError(w, err)
+		return
+	}
+
+	RespondWithProto(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement in US6
-	RespondWithError(w, ErrCodeInternalError, nil)
+	ctx := r.Context()
+
+	var req pb.ResetPasswordRequest
+	if err := DecodeProtoJSON(r, &req); err != nil {
+		RespondWithError(w, ErrCodeBadRequest, err)
+		return
+	}
+
+	resp, err := h.authService.ResetPassword(ctx, &req)
+	if err != nil {
+		HandleServiceError(w, err)
+		return
+	}
+
+	RespondWithProto(w, http.StatusOK, resp)
 }

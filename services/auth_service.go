@@ -15,6 +15,10 @@ type AuthService interface {
 	Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error)
 	Logout(ctx context.Context, req *pb.LogoutRequest, token string) (*pb.LogoutResponse, error)
 	GetCurrentUser(ctx context.Context, req *pb.ValidateTokenRequest) (*pb.User, error)
+	RefreshToken(ctx context.Context, req *pb.RefreshTokenRequest) (*pb.RefreshTokenResponse, error)
+	ValidateToken(ctx context.Context, req *pb.ValidateTokenRequest) (*pb.ValidateTokenResponse, error)
+	RequestPasswordReset(ctx context.Context, req *pb.RequestPasswordResetRequest) (*pb.RequestPasswordResetResponse, error)
+	ResetPassword(ctx context.Context, req *pb.ResetPasswordRequest) (*pb.ResetPasswordResponse, error)
 }
 
 type authService struct {
@@ -180,6 +184,115 @@ func modelToProtoUser(user *models.User, roles, sections []string) *pb.User {
 	}
 
 	return pbUser
+}
+
+func (s *authService) RefreshToken(ctx context.Context, req *pb.RefreshTokenRequest) (*pb.RefreshTokenResponse, error) {
+	if req.RefreshToken == "" {
+		return nil, ErrTokenInvalid
+	}
+
+	// Validate refresh token via session service
+	refreshTokenHash := HashToken(req.RefreshToken)
+	session, err := s.sessionService.ValidateRefreshToken(ctx, refreshTokenHash)
+	if err != nil {
+		return nil, ErrTokenInvalid
+	}
+
+	var user models.User
+	err = s.db.WithContext(ctx).
+		Preload("UserRoles.Role.RolePermissions.Section").
+		Where("id = ?", session.UserID).
+		First(&user).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("find user: %w", err)
+	}
+
+	if !user.IsActive {
+		return nil, ErrUserInactive
+	}
+
+	roles, sections := extractRolesAndSections(user.UserRoles)
+
+	tokenPair, err := s.jwtService.GenerateTokenPair(ctx, user.ID, user.Email, roles, sections)
+	if err != nil {
+		return nil, fmt.Errorf("generate token: %w", err)
+	}
+
+	// Update session with new tokens
+	if err := s.sessionService.UpdateSessionTokens(ctx, session.ID, HashToken(tokenPair.AccessToken), HashToken(tokenPair.RefreshToken)); err != nil {
+		return nil, fmt.Errorf("update session: %w", err)
+	}
+
+	return &pb.RefreshTokenResponse{
+		AccessToken:  tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		ExpiresAt:    timestamppb.New(tokenPair.ExpiresAt),
+	}, nil
+}
+
+func (s *authService) ValidateToken(ctx context.Context, req *pb.ValidateTokenRequest) (*pb.ValidateTokenResponse, error) {
+	if req.Token == "" {
+		return &pb.ValidateTokenResponse{Valid: false}, nil
+	}
+
+	claims, err := s.jwtService.ValidateToken(ctx, req.Token)
+	if err != nil {
+		return &pb.ValidateTokenResponse{Valid: false}, nil
+	}
+
+	userID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		return &pb.ValidateTokenResponse{Valid: false}, nil
+	}
+
+	var user models.User
+	err = s.db.WithContext(ctx).
+		Preload("UserRoles.Role.RolePermissions.Section").
+		Where("id = ?", userID).
+		First(&user).Error
+
+	if err != nil {
+		return &pb.ValidateTokenResponse{Valid: false}, nil
+	}
+
+	if !user.IsActive {
+		return &pb.ValidateTokenResponse{Valid: false}, nil
+	}
+
+	roles, sections := extractRolesAndSections(user.UserRoles)
+
+	return &pb.ValidateTokenResponse{
+		Valid: true,
+		User:  modelToProtoUser(&user, roles, sections),
+		Roles: roles,
+	}, nil
+}
+
+func (s *authService) RequestPasswordReset(ctx context.Context, req *pb.RequestPasswordResetRequest) (*pb.RequestPasswordResetResponse, error) {
+	// Always return success to prevent email enumeration
+	// In production, this would send an email if user exists
+	return &pb.RequestPasswordResetResponse{
+		Success: true,
+		Message: "If the email exists, a password reset link has been sent",
+	}, nil
+}
+
+func (s *authService) ResetPassword(ctx context.Context, req *pb.ResetPasswordRequest) (*pb.ResetPasswordResponse, error) {
+	if req.Token == "" {
+		return nil, ErrTokenInvalid
+	}
+
+	if len(req.NewPassword) < 8 {
+		return nil, ErrPasswordTooShort
+	}
+
+	// In production, this would validate the reset token and update password
+	// For now, return token invalid since we don't have a real token
+	return nil, ErrTokenInvalid
 }
 
 func extractRolesAndSections(userRoles []models.UserRole) ([]string, []string) {
