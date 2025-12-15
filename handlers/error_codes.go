@@ -52,6 +52,12 @@ var (
 		HTTPStatus: http.StatusNotFound,
 		ServiceErr: services.ErrRoleNotFound,
 	}
+	ErrCodeRoleAlreadyExists = ErrorCode{
+		Code:       "ROLE_ALREADY_EXISTS",
+		Message:    "Role with this name already exists",
+		HTTPStatus: http.StatusConflict,
+		ServiceErr: services.ErrRoleAlreadyExists,
+	}
 	ErrCodeRoleHasUsers = ErrorCode{
 		Code:       "ROLE_HAS_USERS",
 		Message:    "Cannot delete role with assigned users",
@@ -124,6 +130,12 @@ var (
 		HTTPStatus: http.StatusInternalServerError,
 		ServiceErr: services.ErrInternalError,
 	}
+	ErrCodeInvalidID = ErrorCode{
+		Code:       "INVALID_ID",
+		Message:    "Invalid ID format",
+		HTTPStatus: http.StatusBadRequest,
+		ServiceErr: services.ErrInvalidID,
+	}
 	ErrCodeBadRequest = ErrorCode{
 		Code:       "BAD_REQUEST",
 		Message:    "Invalid request",
@@ -144,6 +156,7 @@ var errorCodeRegistry = []ErrorCode{
 	ErrCodeUserInactive,
 	ErrCodeUserAlreadyExists,
 	ErrCodeRoleNotFound,
+	ErrCodeRoleAlreadyExists,
 	ErrCodeRoleHasUsers,
 	ErrCodeRoleIsSystem,
 	ErrCodeSessionExpired,
@@ -155,6 +168,8 @@ var errorCodeRegistry = []ErrorCode{
 	ErrCodePasswordTooShort,
 	ErrCodeInvalidEmail,
 	ErrCodeOAuthEmailNotFound,
+	ErrCodeSectionNotFound,
+	ErrCodeInvalidID,
 	ErrCodeInternalError,
 }
 

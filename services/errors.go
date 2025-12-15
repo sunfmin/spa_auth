@@ -8,6 +8,7 @@ var (
 	ErrUserInactive         = errors.New("user account is inactive")
 	ErrUserAlreadyExists    = errors.New("user with this email already exists")
 	ErrRoleNotFound         = errors.New("role not found")
+	ErrRoleAlreadyExists    = errors.New("role with this name already exists")
 	ErrRoleHasUsers         = errors.New("cannot delete role with assigned users")
 	ErrRoleIsSystem         = errors.New("cannot modify or delete system role")
 	ErrSessionNotFound      = errors.New("session not found")
@@ -23,4 +24,5 @@ var (
 	ErrOAuthEmailNotFound   = errors.New("email not registered in system")
 	ErrOAuthStateMismatch   = errors.New("oauth state mismatch")
 	ErrInternalError        = errors.New("internal server error")
+	ErrInvalidID            = errors.New("invalid ID format")
 )

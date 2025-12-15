@@ -17,7 +17,6 @@ type Role struct {
 	UpdatedAt   time.Time      `gorm:"not null;default:now()"`
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
 
-	Creator         *User            `gorm:"foreignKey:CreatedBy"`
 	RolePermissions []RolePermission `gorm:"foreignKey:RoleID"`
 	UserRoles       []UserRole       `gorm:"foreignKey:RoleID"`
 }

@@ -46,7 +46,7 @@ func (s *roleService) CreateRole(ctx context.Context, req *pb.CreateRoleRequest,
 
 	var existing models.Role
 	if err := s.db.WithContext(ctx).Where("name = ?", req.Name).First(&existing).Error; err == nil {
-		return nil, fmt.Errorf("role name already exists")
+		return nil, ErrRoleAlreadyExists
 	}
 
 	createdByUUID, err := uuid.Parse(createdBy)

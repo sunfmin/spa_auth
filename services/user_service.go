@@ -131,7 +131,7 @@ func (s *userService) CreateUser(ctx context.Context, req *pb.CreateUserRequest,
 func (s *userService) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUserResponse, error) {
 	userID, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user ID: %w", err)
+		return nil, fmt.Errorf("invalid user ID: %w", ErrInvalidID)
 	}
 
 	var user models.User

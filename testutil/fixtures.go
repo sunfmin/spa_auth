@@ -49,6 +49,20 @@ func CreateTestRole(db *gorm.DB, name string, description string, isSystem bool)
 	return role, nil
 }
 
+func CreateTestRoleWithCreator(db *gorm.DB, name string, description string, isSystem bool, createdBy uuid.UUID) (*models.Role, error) {
+	role := &models.Role{
+		Name:        name,
+		Description: &description,
+		IsSystem:    isSystem,
+		CreatedBy:   &createdBy,
+	}
+
+	if err := db.Create(role).Error; err != nil {
+		return nil, err
+	}
+	return role, nil
+}
+
 func CreateTestSpaSection(db *gorm.DB, key string, displayName string) (*models.SpaSection, error) {
 	section := &models.SpaSection{
 		Key:         key,

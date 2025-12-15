@@ -19,7 +19,6 @@ type User struct {
 	LastLoginAt  *time.Time     `gorm:""`
 	DeletedAt    gorm.DeletedAt `gorm:"index"`
 
-	Creator   *User      `gorm:"foreignKey:CreatedBy"`
 	UserRoles []UserRole `gorm:"foreignKey:UserID"`
 }
 
