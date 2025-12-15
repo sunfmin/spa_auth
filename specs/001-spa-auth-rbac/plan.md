@@ -27,7 +27,7 @@ Technical approach: Lambda@Edge or standalone auth service fronting CloudFront, 
 | **Password Hashing** | bcrypt cost 12 | Industry standard, GPU-resistant, ~250ms hash time |
 | **OAuth** | Google Authorization Code flow | Most secure for server-side; only for pre-registered emails |
 | **Rate Limiting** | Token bucket (5/15min per email+IP) | Prevents brute force while allowing legitimate retries |
-| **RBAC** | Permission-based roles | Roles (super_admin, admin, editor, viewer) map to permissions (resource:action) |
+| **RBAC** | Dynamic configurable roles | Super admin creates/configures roles with CRUD; roles map to SPA sections; super_admin role is system-protected |
 | **Email** | AWS SES with pluggable interface | Cost-effective, integrates with AWS stack |
 
 ## Lambda@Edge Integration

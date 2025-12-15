@@ -57,23 +57,41 @@ The super admin (seeded at system initialization) creates and manages all user a
 
 ---
 
-### User Story 4 - Role-Based Access Control (Priority: P4)
+### User Story 4 - Role Configuration and Management (Priority: P4)
 
-The super admin assigns roles to users that restrict access to certain parts of the SPA. Users only see and access features appropriate to their assigned role.
+The super admin creates and configures custom roles that map to specific SPA sections/routes. Roles are fully configurable with CRUD operations, allowing the super admin to define which sections each role can access.
 
-**Why this priority**: RBAC builds on top of authentication and user management. Users must exist before roles can be enforced.
+**Why this priority**: Role configuration must be in place before roles can be assigned to users and enforced.
+
+**Independent Test**: Can be tested by the super admin creating a custom role, assigning it permissions for specific SPA sections, and verifying users with that role can only access those sections.
+
+**Acceptance Scenarios**:
+
+1. **US4-AS1**: **Given** the super admin is logged in, **When** they create a new role with a name, description, and list of permitted SPA sections, **Then** the system creates the role and it becomes available for assignment.
+2. **US4-AS2**: **Given** the super admin is logged in, **When** they view the list of roles, **Then** the system displays all roles with their configured permissions.
+3. **US4-AS3**: **Given** the super admin is logged in, **When** they update an existing role's permissions (add/remove SPA sections), **Then** the changes take effect immediately for all users with that role.
+4. **US4-AS4**: **Given** the super admin is logged in, **When** they delete a role that has no users assigned, **Then** the system removes the role.
+5. **US4-AS5**: **Given** the super admin is logged in, **When** they attempt to delete a role that has users assigned, **Then** the system prevents deletion and displays a warning.
+
+---
+
+### User Story 5 - Role-Based Access Enforcement (Priority: P5)
+
+Users are assigned roles by the super admin, and the system enforces access based on the role's configured permissions for SPA sections.
+
+**Why this priority**: Enforcement depends on roles being configured first.
 
 **Independent Test**: Can be tested by logging in as users with different roles and verifying access to role-restricted sections.
 
 **Acceptance Scenarios**:
 
-1. **US4-AS1**: **Given** a user with "viewer" role, **When** they attempt to access a section requiring "editor" role, **Then** the system denies access and displays an appropriate message.
-2. **US4-AS2**: **Given** a user with "admin" role, **When** they access any section of the SPA, **Then** the system grants access to all features.
-3. **US4-AS3**: **Given** a user whose role was just changed by the super admin, **When** they navigate to a newly restricted section, **Then** the system enforces the new permissions without requiring re-login.
+1. **US5-AS1**: **Given** a user with a role that permits "dashboard" section only, **When** they attempt to access the "settings" section, **Then** the system denies access and displays an appropriate message.
+2. **US5-AS2**: **Given** a user with "super_admin" role, **When** they access any section of the SPA, **Then** the system grants access to all features.
+3. **US5-AS3**: **Given** a user whose role permissions were just changed by the super admin, **When** they navigate to a newly restricted section, **Then** the system enforces the new permissions without requiring re-login.
 
 ---
 
-### User Story 5 - Password Reset (Priority: P5)
+### User Story 6 - Password Reset (Priority: P6)
 
 A user who was created with email/password has forgotten their password and needs to regain access to their account.
 
@@ -83,13 +101,13 @@ A user who was created with email/password has forgotten their password and need
 
 **Acceptance Scenarios**:
 
-1. **US5-AS1**: **Given** a user on the login page, **When** they click "Forgot Password" and enter their registered email, **Then** the system sends a password reset link to that email.
-2. **US5-AS2**: **Given** a user with a valid password reset link, **When** they click the link and enter a new password, **Then** the system updates their password and allows login with the new credentials.
-3. **US5-AS3**: **Given** a user with an expired password reset link (older than 24 hours), **When** they click the link, **Then** the system displays an error and prompts them to request a new link.
+1. **US6-AS1**: **Given** a user on the login page, **When** they click "Forgot Password" and enter their registered email, **Then** the system sends a password reset link to that email.
+2. **US6-AS2**: **Given** a user with a valid password reset link, **When** they click the link and enter a new password, **Then** the system updates their password and allows login with the new credentials.
+3. **US6-AS3**: **Given** a user with an expired password reset link (older than 24 hours), **When** they click the link, **Then** the system displays an error and prompts them to request a new link.
 
 ---
 
-### User Story 6 - Session Management (Priority: P6)
+### User Story 7 - Session Management (Priority: P7)
 
 Users need their sessions to persist appropriately and be secured against unauthorized access.
 
@@ -99,9 +117,9 @@ Users need their sessions to persist appropriately and be secured against unauth
 
 **Acceptance Scenarios**:
 
-1. **US6-AS1**: **Given** an authenticated user who closes their browser, **When** they return within the session validity period, **Then** they remain logged in without re-authentication.
-2. **US6-AS2**: **Given** an authenticated user whose session has expired, **When** they attempt to access the SPA, **Then** the system redirects them to the login page.
-3. **US6-AS3**: **Given** an authenticated user, **When** they are inactive for a configurable period, **Then** the system automatically logs them out.
+1. **US7-AS1**: **Given** an authenticated user who closes their browser, **When** they return within the session validity period, **Then** they remain logged in without re-authentication.
+2. **US7-AS2**: **Given** an authenticated user whose session has expired, **When** they attempt to access the SPA, **Then** the system redirects them to the login page.
+3. **US7-AS3**: **Given** an authenticated user, **When** they are inactive for a configurable period, **Then** the system automatically logs them out.
 
 ---
 
@@ -170,18 +188,26 @@ Users need their sessions to persist appropriately and be secured against unauth
 - **FR-020**: System MUST validate session tokens on each protected request
 - **FR-021**: System MUST redirect unauthenticated users to login page
 
-**Role-Based Access Control**:
-- **FR-022**: System MUST support configurable user roles (e.g., viewer, editor, admin, super_admin)
-- **FR-023**: System MUST enforce role-based permissions on SPA routes/sections
-- **FR-024**: Super admin MUST be able to assign and modify user roles
-- **FR-025**: System MUST apply role changes immediately without requiring re-login
-- **FR-026**: System MUST deny access to unauthorized sections with appropriate feedback
+**Role Management (Super Admin Only)**:
+- **FR-022**: Super admin MUST be able to create custom roles with name and description
+- **FR-023**: Super admin MUST be able to configure which SPA sections/routes each role can access
+- **FR-024**: Super admin MUST be able to view all roles and their configured permissions
+- **FR-025**: Super admin MUST be able to update role permissions (add/remove SPA sections)
+- **FR-026**: Super admin MUST be able to delete roles that have no users assigned
+- **FR-027**: System MUST prevent deletion of roles that have users assigned
+- **FR-028**: System MUST provide a predefined "super_admin" role that cannot be deleted or modified
+
+**Role-Based Access Enforcement**:
+- **FR-029**: System MUST enforce role-based permissions on SPA routes/sections
+- **FR-030**: Super admin MUST be able to assign and modify user roles
+- **FR-031**: System MUST apply role/permission changes immediately without requiring re-login
+- **FR-032**: System MUST deny access to unauthorized sections with appropriate feedback
 
 **Security**:
-- **FR-027**: System MUST rate-limit failed login attempts (max 5 per 15 minutes per IP/email)
-- **FR-028**: System MUST protect against CSRF attacks
-- **FR-029**: System MUST sanitize all user inputs to prevent injection attacks
-- **FR-030**: System MUST use secure, HTTP-only cookies for session management
+- **FR-033**: System MUST rate-limit failed login attempts (max 5 per 15 minutes per IP/email)
+- **FR-034**: System MUST protect against CSRF attacks
+- **FR-035**: System MUST sanitize all user inputs to prevent injection attacks
+- **FR-036**: System MUST use secure, HTTP-only cookies for session management
 
 **Error Handling Requirements** (Constitution Principle XIII):
 - **FR-ERR-001**: System MUST provide clear error messages when authentication fails
@@ -191,7 +217,9 @@ Users need their sessions to persist appropriately and be secured against unauth
 ### Key Entities
 
 - **User**: Represents an authenticated user; attributes include unique identifier, email, hashed password (optional for OAuth-only users), authentication provider(s), active status, created_by (reference to super admin), creation timestamp, last login timestamp
-- **Role**: Represents a permission level; attributes include role name (viewer, editor, admin, super_admin), description, list of permitted actions/routes
+- **Role**: Represents a configurable permission level; attributes include unique identifier, role name, description, is_system (true for super_admin), list of permitted SPA sections/routes
+- **SpaSection**: Represents a section/route in the SPA that can be protected; attributes include unique identifier, section key (e.g., "dashboard", "settings", "reports"), display name, description
+- **RolePermission**: Association between Role and SpaSection; defines which sections a role can access
 - **UserRole**: Association between User and Role; supports multiple roles per user
 - **Session**: Represents an active user session; attributes include session token, user reference, creation time, expiration time, last activity time
 - **PasswordResetToken**: Temporary token for password reset; attributes include token value, user reference, creation time, expiration time, used status

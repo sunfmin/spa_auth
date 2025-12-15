@@ -7,29 +7,29 @@
 ## Entity Relationship Diagram
 
 ```
-┌─────────────────┐       ┌─────────────────┐
-│      User       │       │      Role       │
-├─────────────────┤       ├─────────────────┤
-│ id (PK)         │       │ id (PK)         │
-│ email (unique)  │       │ name (unique)   │
-│ password_hash   │       │ description     │
-│ google_id       │       │ permissions     │
-│ is_active       │       │ created_at      │
-│ created_by (FK) │───┐   │ updated_at      │
-│ created_at      │   │   └────────┬────────┘
-│ updated_at      │   │            │
-│ last_login_at   │   │            │
-└────────┬────────┘   │            │
-         │            │            │
-         │            │            │
-         ▼            │            ▼
-┌─────────────────┐   │   ┌─────────────────┐
-│    UserRole     │   │   │   Permission    │
-├─────────────────┤   │   ├─────────────────┤
-│ user_id (FK,PK) │───┘   │ role_id (FK)    │
-│ role_id (FK,PK) │───────│ action (PK)     │
-│ assigned_at     │       │ resource (PK)   │
-│ assigned_by(FK) │       └─────────────────┘
+┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+│      User       │       │      Role       │       │   SpaSection    │
+├─────────────────┤       ├─────────────────┤       ├─────────────────┤
+│ id (PK)         │       │ id (PK)         │       │ id (PK)         │
+│ email (unique)  │       │ name (unique)   │       │ key (unique)    │
+│ password_hash   │       │ description     │       │ display_name    │
+│ google_id       │       │ is_system       │       │ description     │
+│ is_active       │       │ created_at      │       │ created_at      │
+│ created_by (FK) │───┐   │ updated_at      │       │ updated_at      │
+│ created_at      │   │   └────────┬────────┘       └────────┬────────┘
+│ updated_at      │   │            │                         │
+│ last_login_at   │   │            │                         │
+└────────┬────────┘   │            │                         │
+         │            │            │                         │
+         │            │            ▼                         │
+         ▼            │   ┌─────────────────┐                │
+┌─────────────────┐   │   │ RolePermission  │◄───────────────┘
+│    UserRole     │   │   ├─────────────────┤
+├─────────────────┤   │   │ role_id (FK,PK) │
+│ user_id (FK,PK) │───┘   │ section_id(FK,PK│
+│ role_id (FK,PK) │───────│ created_at      │
+│ assigned_at     │       └─────────────────┘
+│ assigned_by(FK) │
 └─────────────────┘
          │
          │
@@ -81,25 +81,61 @@ Represents an authenticated user in the system.
 
 ### Role
 
-Represents a permission level that can be assigned to users.
+Represents a configurable permission level that can be assigned to users. Roles are created and managed by the super admin.
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
 | `id` | UUID | PK, auto-generated | Unique identifier |
-| `name` | VARCHAR(50) | UNIQUE, NOT NULL | Role name (viewer, editor, admin, super_admin) |
+| `name` | VARCHAR(50) | UNIQUE, NOT NULL | Role name (e.g., viewer, editor, admin) |
 | `description` | TEXT | NULL | Human-readable description |
+| `is_system` | BOOLEAN | NOT NULL, DEFAULT false | True for system roles that cannot be deleted/modified |
+| `created_by` | UUID | FK → User.id, NULL | Super admin who created this role |
 | `created_at` | TIMESTAMP | NOT NULL, DEFAULT now() | Role creation time |
 | `updated_at` | TIMESTAMP | NOT NULL, DEFAULT now() | Last update time |
 
-**Predefined Roles** (seeded on initialization):
-- `super_admin`: Full system access including user management
-- `admin`: Full content access, no user management
-- `editor`: Read and write content
-- `viewer`: Read-only access
+**System Roles** (seeded on initialization, `is_system=true`):
+- `super_admin`: Full system access including user/role management - **cannot be deleted or modified**
 
 **Validation Rules**:
 - Name must be lowercase alphanumeric with underscores
 - Name max length: 50 characters
+- System roles (`is_system=true`) cannot be deleted or have permissions modified
+
+**Indexes**:
+- `idx_roles_name` on `name` (unique)
+- `idx_roles_is_system` on `is_system`
+
+---
+
+### SpaSection
+
+Represents a section/route in the SPA that can be protected by role-based access control.
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| `id` | UUID | PK, auto-generated | Unique identifier |
+| `key` | VARCHAR(100) | UNIQUE, NOT NULL | Section identifier (e.g., "dashboard", "settings", "reports") |
+| `display_name` | VARCHAR(100) | NOT NULL | Human-readable name for UI |
+| `description` | TEXT | NULL | Description of what this section contains |
+| `created_at` | TIMESTAMP | NOT NULL, DEFAULT now() | Section creation time |
+| `updated_at` | TIMESTAMP | NOT NULL, DEFAULT now() | Last update time |
+
+**Validation Rules**:
+- Key must be lowercase alphanumeric with hyphens/underscores
+- Key max length: 100 characters
+- Display name max length: 100 characters
+
+**Indexes**:
+- `idx_spa_sections_key` on `key` (unique)
+
+**Example Sections**:
+| Key | Display Name | Description |
+|-----|--------------|-------------|
+| `dashboard` | Dashboard | Main dashboard view |
+| `users` | User Management | User administration (super_admin only) |
+| `roles` | Role Management | Role configuration (super_admin only) |
+| `settings` | Settings | Application settings |
+| `reports` | Reports | Analytics and reports |
 
 ---
 
@@ -124,29 +160,28 @@ Association table linking users to their assigned roles.
 
 ---
 
-### Permission
+### RolePermission
 
-Defines granular permissions associated with roles.
+Association table linking roles to the SPA sections they can access. Super admin configures these mappings.
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
 | `role_id` | UUID | PK, FK → Role.id | Role reference |
-| `resource` | VARCHAR(50) | PK, NOT NULL | Resource name (users, content, settings) |
-| `action` | VARCHAR(20) | PK, NOT NULL | Action (read, write, delete, manage) |
+| `section_id` | UUID | PK, FK → SpaSection.id | SPA section reference |
+| `created_at` | TIMESTAMP | NOT NULL, DEFAULT now() | When permission was granted |
 
 **Constraints**:
-- Composite primary key: (`role_id`, `resource`, `action`)
-- ON DELETE CASCADE for role_id
+- Composite primary key: (`role_id`, `section_id`)
+- ON DELETE CASCADE for both foreign keys
 
-**Predefined Permissions**:
-| Role | Resource | Actions |
-|------|----------|---------|
-| super_admin | users | read, write, delete, manage |
-| super_admin | roles | read, write, manage |
-| super_admin | content | read, write, delete |
-| admin | content | read, write, delete |
-| editor | content | read, write |
-| viewer | content | read |
+**Indexes**:
+- `idx_role_permissions_role_id` on `role_id`
+- `idx_role_permissions_section_id` on `section_id`
+
+**Notes**:
+- `super_admin` role implicitly has access to ALL sections (enforced in application logic, not stored)
+- When a role is deleted, all its permissions are cascade deleted
+- When a section is deleted, all permissions referencing it are cascade deleted
 
 ---
 

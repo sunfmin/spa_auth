@@ -7,8 +7,21 @@ option go_package = "github.com/user/spa_auth/api/gen/auth/v1;authv1";
 import "google/protobuf/timestamp.proto";
 
 // =============================================================================
-// Role Management Service
+// Role CRUD (Super Admin Only)
 // =============================================================================
+
+// CreateRoleRequest to create a new custom role
+// Maps to: FR-022, US4-AS1
+message CreateRoleRequest {
+  string name = 1;                    // Role name (lowercase alphanumeric with underscores)
+  string description = 2;             // Human-readable description
+  repeated string section_ids = 3;    // SPA section IDs this role can access
+}
+
+// CreateRoleResponse with created role
+message CreateRoleResponse {
+  Role role = 1;
+}
 
 // GetRoleRequest to retrieve role by ID or name
 message GetRoleRequest {
@@ -24,15 +37,95 @@ message GetRoleResponse {
 }
 
 // ListRolesRequest to list all available roles
-// Maps to: FR-022
+// Maps to: FR-024, US4-AS2
 message ListRolesRequest {
-  // No pagination needed - roles are a small fixed set
+  bool include_system = 1; // Include system roles like super_admin (default true)
 }
 
 // ListRolesResponse with all roles
 message ListRolesResponse {
   repeated Role roles = 1;
 }
+
+// UpdateRoleRequest to modify role permissions
+// Maps to: FR-025, US4-AS3
+message UpdateRoleRequest {
+  string id = 1;                      // Role UUID to update
+  optional string name = 2;           // New name (optional)
+  optional string description = 3;    // New description (optional)
+  repeated string section_ids = 4;    // New list of permitted SPA section IDs (replaces existing)
+}
+
+// UpdateRoleResponse with updated role
+message UpdateRoleResponse {
+  Role role = 1;
+}
+
+// DeleteRoleRequest to remove a role
+// Maps to: FR-026, FR-027, US4-AS4, US4-AS5
+message DeleteRoleRequest {
+  string id = 1; // Role UUID to delete
+}
+
+// DeleteRoleResponse confirms deletion
+message DeleteRoleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// =============================================================================
+// SPA Section Management (Super Admin Only)
+// =============================================================================
+
+// CreateSpaSectionRequest to register a new SPA section
+message CreateSpaSectionRequest {
+  string key = 1;          // Section identifier (e.g., "dashboard", "settings")
+  string display_name = 2; // Human-readable name
+  string description = 3;  // Description of the section
+}
+
+// CreateSpaSectionResponse with created section
+message CreateSpaSectionResponse {
+  SpaSection section = 1;
+}
+
+// ListSpaSectionsRequest to list all SPA sections
+message ListSpaSectionsRequest {
+  // No pagination - sections are a small set
+}
+
+// ListSpaSectionsResponse with all sections
+message ListSpaSectionsResponse {
+  repeated SpaSection sections = 1;
+}
+
+// UpdateSpaSectionRequest to modify a section
+message UpdateSpaSectionRequest {
+  string id = 1;                      // Section UUID
+  optional string key = 2;            // New key (optional)
+  optional string display_name = 3;   // New display name (optional)
+  optional string description = 4;    // New description (optional)
+}
+
+// UpdateSpaSectionResponse with updated section
+message UpdateSpaSectionResponse {
+  SpaSection section = 1;
+}
+
+// DeleteSpaSectionRequest to remove a section
+message DeleteSpaSectionRequest {
+  string id = 1; // Section UUID to delete
+}
+
+// DeleteSpaSectionResponse confirms deletion
+message DeleteSpaSectionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// =============================================================================
+// Role Assignment to Users
+// =============================================================================
 
 // GetUserRolesRequest to get roles for a specific user
 message GetUserRolesRequest {
@@ -45,7 +138,7 @@ message GetUserRolesResponse {
 }
 
 // AssignRoleRequest to assign a role to a user
-// Maps to: FR-024, US3-AS2
+// Maps to: FR-030, US3-AS2
 message AssignRoleRequest {
   string user_id = 1; // User UUID
   string role_id = 2; // Role UUID to assign
@@ -58,7 +151,7 @@ message AssignRoleResponse {
 }
 
 // RemoveRoleRequest to remove a role from a user
-// Maps to: FR-024
+// Maps to: FR-030
 message RemoveRoleRequest {
   string user_id = 1; // User UUID
   string role_id = 2; // Role UUID to remove
@@ -70,47 +163,56 @@ message RemoveRoleResponse {
   string message = 2;
 }
 
-// CheckPermissionRequest to verify if user has specific permission
-// Maps to: FR-023, FR-026, US4-AS1, US4-AS2
-message CheckPermissionRequest {
-  string user_id = 1;  // User UUID (or extracted from token)
-  string resource = 2; // Resource name (e.g., "content", "users")
-  string action = 3;   // Action (e.g., "read", "write", "delete")
+// =============================================================================
+// Permission Checking
+// =============================================================================
+
+// CheckSectionAccessRequest to verify if user can access a SPA section
+// Maps to: FR-029, FR-032, US5-AS1, US5-AS2
+message CheckSectionAccessRequest {
+  string user_id = 1;     // User UUID (or extracted from token)
+  string section_key = 2; // SPA section key (e.g., "dashboard", "settings")
 }
 
-// CheckPermissionResponse with permission result
-message CheckPermissionResponse {
-  bool allowed = 1;     // Whether permission is granted
+// CheckSectionAccessResponse with access result
+message CheckSectionAccessResponse {
+  bool allowed = 1;     // Whether access is granted
   string reason = 2;    // Explanation if denied
 }
 
-// GetUserPermissionsRequest to get all permissions for a user
-message GetUserPermissionsRequest {
+// GetUserSectionsRequest to get all sections a user can access
+message GetUserSectionsRequest {
   string user_id = 1; // User UUID
 }
 
-// GetUserPermissionsResponse with all user permissions
-message GetUserPermissionsResponse {
-  repeated Permission permissions = 1;
+// GetUserSectionsResponse with accessible sections
+message GetUserSectionsResponse {
+  repeated SpaSection sections = 1;
 }
 
 // =============================================================================
 // Common Types
 // =============================================================================
 
-// Role represents a permission level
+// Role represents a configurable permission level
 message Role {
   string id = 1;                              // UUID
-  string name = 2;                            // Role name (viewer, editor, admin, super_admin)
+  string name = 2;                            // Role name (e.g., viewer, editor, custom_role)
   string description = 3;                     // Human-readable description
-  repeated Permission permissions = 4;        // Permissions granted by this role
-  google.protobuf.Timestamp created_at = 5;  // Role creation time
+  bool is_system = 4;                         // True for system roles (super_admin) that cannot be modified
+  repeated SpaSection sections = 5;           // SPA sections this role can access
+  google.protobuf.Timestamp created_at = 6;   // Role creation time
+  google.protobuf.Timestamp updated_at = 7;   // Last update time
+  string created_by = 8;                      // UUID of admin who created this role
 }
 
-// Permission represents a single permission
-message Permission {
-  string resource = 1; // Resource name (users, content, roles, settings)
-  string action = 2;   // Action (read, write, delete, manage)
+// SpaSection represents a section/route in the SPA
+message SpaSection {
+  string id = 1;                              // UUID
+  string key = 2;                             // Section identifier (e.g., "dashboard", "settings")
+  string display_name = 3;                    // Human-readable name for UI
+  string description = 4;                     // Description of the section
+  google.protobuf.Timestamp created_at = 5;  // Section creation time
 }
 
 // RoleAssignment represents a user-role association
