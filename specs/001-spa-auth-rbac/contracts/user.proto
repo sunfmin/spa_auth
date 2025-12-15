@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/user/spa_auth/api/gen/auth/v1;authv1";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// User Management Service (Super Admin Only)
+// =============================================================================
+
+// CreateUserRequest for super admin to create new users
+// Maps to: FR-009, FR-013, US3-AS1
+message CreateUserRequest {
+  string email = 1;           // User's email address (max 254 chars, unique)
+  string password = 2;        // Initial password (min 8 chars)
+  repeated string roles = 3;  // Role names to assign (e.g., ["viewer", "editor"])
+}
+
+// CreateUserResponse with created user details
+message CreateUserResponse {
+  User user = 1;
+}
+
+// GetUserRequest to retrieve user by ID
+message GetUserRequest {
+  string id = 1; // User UUID
+}
+
+// GetUserResponse with user details
+message GetUserResponse {
+  User user = 1;
+}
+
+// ListUsersRequest to list all users with pagination
+message ListUsersRequest {
+  int32 page_size = 1;    // Max users per page (default 20, max 100)
+  string page_token = 2;  // Token for next page
+  bool include_inactive = 3; // Include deactivated users
+}
+
+// ListUsersResponse with paginated user list
+message ListUsersResponse {
+  repeated User users = 1;
+  string next_page_token = 2; // Token for next page (empty if last page)
+  int32 total_count = 3;      // Total number of users
+}
+
+// UpdateUserRequest to modify user details
+// Maps to: FR-010, US3-AS2
+message UpdateUserRequest {
+  string id = 1;                    // User UUID to update
+  optional string email = 2;        // New email (if changing)
+  repeated string roles = 3;        // New roles (replaces existing)
+  optional bool is_active = 4;      // Activate/deactivate account
+}
+
+// UpdateUserResponse with updated user
+message UpdateUserResponse {
+  User user = 1;
+}
+
+// DeactivateUserRequest to disable user account
+// Maps to: FR-011, US3-AS3
+message DeactivateUserRequest {
+  string id = 1; // User UUID to deactivate
+}
+
+// DeactivateUserResponse confirms deactivation
+message DeactivateUserResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ReactivateUserRequest to re-enable user account
+// Maps to: FR-011
+message ReactivateUserRequest {
+  string id = 1; // User UUID to reactivate
+}
+
+// ReactivateUserResponse confirms reactivation
+message ReactivateUserResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// AdminResetPasswordRequest for super admin to reset user password
+// Maps to: FR-012, US3-AS4
+message AdminResetPasswordRequest {
+  string user_id = 1;      // User UUID
+  string new_password = 2; // New password (min 8 chars)
+}
+
+// AdminResetPasswordResponse confirms password reset
+message AdminResetPasswordResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// DeleteUserRequest to permanently delete user (use with caution)
+message DeleteUserRequest {
+  string id = 1; // User UUID to delete
+}
+
+// DeleteUserResponse confirms deletion
+message DeleteUserResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// =============================================================================
+// Common Types (shared with auth.proto)
+// =============================================================================
+
+// User represents an authenticated user
+message User {
+  string id = 1;                                  // UUID
+  string email = 2;                               // Email address
+  bool is_active = 3;                             // Account active status
+  repeated string roles = 4;                      // Assigned role names
+  bool has_password = 5;                          // Has password auth enabled
+  bool has_google = 6;                            // Has Google OAuth linked
+  google.protobuf.Timestamp created_at = 7;      // Account creation time
+  google.protobuf.Timestamp last_login_at = 8;   // Last successful login
+  string created_by = 9;                          // UUID of admin who created this user
+}

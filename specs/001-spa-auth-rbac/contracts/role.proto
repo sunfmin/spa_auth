@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/user/spa_auth/api/gen/auth/v1;authv1";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Role Management Service
+// =============================================================================
+
+// GetRoleRequest to retrieve role by ID or name
+message GetRoleRequest {
+  oneof identifier {
+    string id = 1;   // Role UUID
+    string name = 2; // Role name (e.g., "viewer", "editor")
+  }
+}
+
+// GetRoleResponse with role details
+message GetRoleResponse {
+  Role role = 1;
+}
+
+// ListRolesRequest to list all available roles
+// Maps to: FR-022
+message ListRolesRequest {
+  // No pagination needed - roles are a small fixed set
+}
+
+// ListRolesResponse with all roles
+message ListRolesResponse {
+  repeated Role roles = 1;
+}
+
+// GetUserRolesRequest to get roles for a specific user
+message GetUserRolesRequest {
+  string user_id = 1; // User UUID
+}
+
+// GetUserRolesResponse with user's assigned roles
+message GetUserRolesResponse {
+  repeated Role roles = 1;
+}
+
+// AssignRoleRequest to assign a role to a user
+// Maps to: FR-024, US3-AS2
+message AssignRoleRequest {
+  string user_id = 1; // User UUID
+  string role_id = 2; // Role UUID to assign
+}
+
+// AssignRoleResponse confirms role assignment
+message AssignRoleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// RemoveRoleRequest to remove a role from a user
+// Maps to: FR-024
+message RemoveRoleRequest {
+  string user_id = 1; // User UUID
+  string role_id = 2; // Role UUID to remove
+}
+
+// RemoveRoleResponse confirms role removal
+message RemoveRoleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// CheckPermissionRequest to verify if user has specific permission
+// Maps to: FR-023, FR-026, US4-AS1, US4-AS2
+message CheckPermissionRequest {
+  string user_id = 1;  // User UUID (or extracted from token)
+  string resource = 2; // Resource name (e.g., "content", "users")
+  string action = 3;   // Action (e.g., "read", "write", "delete")
+}
+
+// CheckPermissionResponse with permission result
+message CheckPermissionResponse {
+  bool allowed = 1;     // Whether permission is granted
+  string reason = 2;    // Explanation if denied
+}
+
+// GetUserPermissionsRequest to get all permissions for a user
+message GetUserPermissionsRequest {
+  string user_id = 1; // User UUID
+}
+
+// GetUserPermissionsResponse with all user permissions
+message GetUserPermissionsResponse {
+  repeated Permission permissions = 1;
+}
+
+// =============================================================================
+// Common Types
+// =============================================================================
+
+// Role represents a permission level
+message Role {
+  string id = 1;                              // UUID
+  string name = 2;                            // Role name (viewer, editor, admin, super_admin)
+  string description = 3;                     // Human-readable description
+  repeated Permission permissions = 4;        // Permissions granted by this role
+  google.protobuf.Timestamp created_at = 5;  // Role creation time
+}
+
+// Permission represents a single permission
+message Permission {
+  string resource = 1; // Resource name (users, content, roles, settings)
+  string action = 2;   // Action (read, write, delete, manage)
+}
+
+// RoleAssignment represents a user-role association
+message RoleAssignment {
+  string user_id = 1;                            // User UUID
+  string role_id = 2;                            // Role UUID
+  google.protobuf.Timestamp assigned_at = 3;    // When role was assigned
+  string assigned_by = 4;                        // UUID of admin who assigned
+}

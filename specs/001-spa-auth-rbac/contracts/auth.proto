@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/user/spa_auth/api/gen/auth/v1;authv1";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Authentication Service
+// =============================================================================
+
+// LoginRequest for email/password authentication
+// Maps to: FR-001, FR-002, US1-AS1, US1-AS2
+message LoginRequest {
+  string email = 1;    // User's email address (max 254 chars)
+  string password = 2; // User's password (min 8 chars)
+}
+
+// LoginResponse returned on successful authentication
+message LoginResponse {
+  User user = 1;                              // Authenticated user details
+  string access_token = 2;                    // JWT access token (15 min TTL)
+  string refresh_token = 3;                   // Refresh token (7 day TTL)
+  google.protobuf.Timestamp expires_at = 4;  // Access token expiration
+}
+
+// LogoutRequest to terminate session
+// Maps to: FR-007, US1-AS3
+message LogoutRequest {
+  // Token extracted from cookie/header by middleware
+}
+
+// LogoutResponse confirms session termination
+message LogoutResponse {
+  bool success = 1;
+}
+
+// RefreshTokenRequest to get new access token
+// Maps to: FR-018
+message RefreshTokenRequest {
+  string refresh_token = 1; // Current refresh token
+}
+
+// RefreshTokenResponse with new tokens
+message RefreshTokenResponse {
+  string access_token = 1;                    // New JWT access token
+  string refresh_token = 2;                   // New refresh token (rotated)
+  google.protobuf.Timestamp expires_at = 3;  // New expiration
+}
+
+// ValidateTokenRequest to check if token is valid
+// Maps to: FR-020
+message ValidateTokenRequest {
+  string token = 1; // JWT access token to validate
+}
+
+// ValidateTokenResponse with validation result
+message ValidateTokenResponse {
+  bool valid = 1;           // Whether token is valid
+  User user = 2;            // User details if valid
+  repeated string roles = 3; // User's roles if valid
+}
+
+// =============================================================================
+// Google OAuth
+// =============================================================================
+
+// OAuthStartRequest initiates OAuth flow
+// Maps to: FR-003, US2-AS1
+message OAuthStartRequest {
+  string redirect_uri = 1; // Where to redirect after OAuth (optional, uses default)
+}
+
+// OAuthStartResponse with authorization URL
+message OAuthStartResponse {
+  string authorization_url = 1; // Google OAuth consent URL
+  string state = 2;             // CSRF state token
+}
+
+// OAuthCallbackRequest handles Google callback
+// Maps to: FR-004, FR-005, US2-AS1, US2-AS2
+message OAuthCallbackRequest {
+  string code = 1;  // Authorization code from Google
+  string state = 2; // CSRF state token for verification
+}
+
+// OAuthCallbackResponse same as LoginResponse
+message OAuthCallbackResponse {
+  User user = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+// =============================================================================
+// Password Reset
+// =============================================================================
+
+// RequestPasswordResetRequest to initiate reset flow
+// Maps to: FR-014, US5-AS1
+message RequestPasswordResetRequest {
+  string email = 1; // Email address to send reset link
+}
+
+// RequestPasswordResetResponse confirms request received
+message RequestPasswordResetResponse {
+  bool success = 1; // Always true if email is valid format (security: don't reveal if email exists)
+  string message = 2; // User-friendly message
+}
+
+// ResetPasswordRequest to set new password
+// Maps to: FR-015, FR-016, US5-AS2, US5-AS3
+message ResetPasswordRequest {
+  string token = 1;        // Reset token from email link
+  string new_password = 2; // New password (min 8 chars)
+}
+
+// ResetPasswordResponse confirms password updated
+message ResetPasswordResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// =============================================================================
+// Common Types
+// =============================================================================
+
+// User represents an authenticated user
+message User {
+  string id = 1;                                  // UUID
+  string email = 2;                               // Email address
+  bool is_active = 3;                             // Account active status
+  repeated string roles = 4;                      // Assigned role names
+  bool has_password = 5;                          // Has password auth enabled
+  bool has_google = 6;                            // Has Google OAuth linked
+  google.protobuf.Timestamp created_at = 7;      // Account creation time
+  google.protobuf.Timestamp last_login_at = 8;   // Last successful login
+}
+
+// Session represents an active session
+message Session {
+  string id = 1;                                  // Session UUID
+  string user_id = 2;                             // User UUID
+  google.protobuf.Timestamp expires_at = 3;      // Session expiration
+  google.protobuf.Timestamp last_activity_at = 4; // Last activity
+  string ip_address = 5;                          // Client IP
+  string user_agent = 6;                          // Client user agent
+  google.protobuf.Timestamp created_at = 7;      // Session creation
+}

@@ -1,0 +1,982 @@
+openapi: 3.0.3
+info:
+  title: SPA Authentication API
+  description: |
+    Authentication and authorization API for S3/CloudFront-deployed SPA.
+    Supports email/password login, Google OAuth, and role-based access control.
+    
+    **Key Features:**
+    - Email/password authentication (admin-created users only)
+    - Google OAuth 2.0 (for pre-registered emails)
+    - Role-based access control (viewer, editor, admin, super_admin)
+    - Super admin user management
+    - Password reset via email
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: https://auth.example.com/api/v1
+    description: Production
+  - url: http://localhost:8080/api/v1
+    description: Development
+
+tags:
+  - name: Authentication
+    description: Login, logout, and token management
+  - name: OAuth
+    description: Google OAuth 2.0 integration
+  - name: Password
+    description: Password reset functionality
+  - name: Users
+    description: User management (super admin only)
+  - name: Roles
+    description: Role and permission management
+
+paths:
+  # ==========================================================================
+  # Authentication Endpoints
+  # ==========================================================================
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login with email and password
+      description: |
+        Authenticate user with email/password credentials.
+        Returns JWT access token and refresh token.
+        
+        **Spec References:** FR-001, FR-002, US1-AS1, US1-AS2
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          headers:
+            Set-Cookie:
+              description: HTTP-only cookie with access token
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout and invalidate session
+      description: |
+        Terminate current session and invalidate tokens.
+        
+        **Spec References:** FR-007, US1-AS3
+      operationId: logout
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Successfully logged out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      description: |
+        Exchange refresh token for new access token.
+        Refresh token is rotated on each use.
+        
+        **Spec References:** FR-018
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: New tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/validate:
+    post:
+      tags: [Authentication]
+      summary: Validate access token
+      description: |
+        Check if access token is valid and return user info.
+        Used by Lambda@Edge for request validation.
+        
+        **Spec References:** FR-020
+      operationId: validateToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateTokenRequest'
+      responses:
+        '200':
+          description: Token validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateTokenResponse'
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user info
+      description: Returns the authenticated user's profile and roles.
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==========================================================================
+  # OAuth Endpoints
+  # ==========================================================================
+  /oauth/google/start:
+    get:
+      tags: [OAuth]
+      summary: Start Google OAuth flow
+      description: |
+        Initiates Google OAuth 2.0 authorization code flow.
+        Returns URL to redirect user to Google consent screen.
+        
+        **Spec References:** FR-003, US2-AS1
+      operationId: oauthGoogleStart
+      parameters:
+        - name: redirect_uri
+          in: query
+          description: Custom redirect URI after OAuth (optional)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OAuth authorization URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthStartResponse'
+
+  /oauth/google/callback:
+    get:
+      tags: [OAuth]
+      summary: Google OAuth callback
+      description: |
+        Handles callback from Google after user authorization.
+        Verifies email exists in system before issuing tokens.
+        
+        **Spec References:** FR-004, FR-005, US2-AS1, US2-AS2
+      operationId: oauthGoogleCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: Authorization code from Google
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          description: CSRF state token
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to SPA with tokens (success) or error page (failure)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Email not registered in system
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==========================================================================
+  # Password Reset Endpoints
+  # ==========================================================================
+  /password/reset/request:
+    post:
+      tags: [Password]
+      summary: Request password reset
+      description: |
+        Send password reset email to user.
+        Always returns success for security (doesn't reveal if email exists).
+        
+        **Spec References:** FR-014, US5-AS1
+      operationId: requestPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestPasswordResetRequest'
+      responses:
+        '200':
+          description: Reset email sent (if email exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestPasswordResetResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /password/reset:
+    post:
+      tags: [Password]
+      summary: Reset password with token
+      description: |
+        Set new password using reset token from email.
+        Token expires after 24 hours.
+        
+        **Spec References:** FR-015, FR-016, US5-AS2, US5-AS3
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password successfully reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetPasswordResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '410':
+          description: Token expired or already used
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==========================================================================
+  # User Management Endpoints (Super Admin Only)
+  # ==========================================================================
+  /users:
+    get:
+      tags: [Users]
+      summary: List all users
+      description: |
+        Get paginated list of all users.
+        Requires super_admin role.
+      operationId: listUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: page_token
+          in: query
+          schema:
+            type: string
+        - name: include_inactive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListUsersResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Users]
+      summary: Create new user
+      description: |
+        Create a new user account with email, password, and roles.
+        Requires super_admin role.
+        
+        **Spec References:** FR-009, FR-013, US3-AS1
+      operationId: createUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      description: Requires super_admin role.
+      operationId: getUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Users]
+      summary: Update user
+      description: |
+        Update user email, roles, or active status.
+        Requires super_admin role.
+        
+        **Spec References:** FR-010, US3-AS2
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Users]
+      summary: Delete user
+      description: |
+        Permanently delete user account.
+        Requires super_admin role. Use with caution.
+      operationId: deleteUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{id}/deactivate:
+    post:
+      tags: [Users]
+      summary: Deactivate user
+      description: |
+        Disable user account and terminate all sessions.
+        Requires super_admin role.
+        
+        **Spec References:** FR-011, US3-AS3
+      operationId: deactivateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeactivateUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{id}/reactivate:
+    post:
+      tags: [Users]
+      summary: Reactivate user
+      description: |
+        Re-enable previously deactivated user account.
+        Requires super_admin role.
+        
+        **Spec References:** FR-011
+      operationId: reactivateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User reactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactivateUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{id}/password:
+    post:
+      tags: [Users]
+      summary: Admin reset user password
+      description: |
+        Super admin sets new password for user.
+        Requires super_admin role.
+        
+        **Spec References:** FR-012, US3-AS4
+      operationId: adminResetPassword
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminResetPasswordRequest'
+      responses:
+        '200':
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminResetPasswordResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==========================================================================
+  # Role Management Endpoints
+  # ==========================================================================
+  /roles:
+    get:
+      tags: [Roles]
+      summary: List all roles
+      description: |
+        Get all available roles with their permissions.
+        
+        **Spec References:** FR-022
+      operationId: listRoles
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRolesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /roles/{id}:
+    get:
+      tags: [Roles]
+      summary: Get role by ID
+      operationId: getRole
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Role details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /permissions/check:
+    post:
+      tags: [Roles]
+      summary: Check user permission
+      description: |
+        Verify if current user has permission for resource/action.
+        
+        **Spec References:** FR-023, FR-026, US4-AS1, US4-AS2
+      operationId: checkPermission
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckPermissionRequest'
+      responses:
+        '200':
+          description: Permission check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckPermissionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: User UUID
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+      headers:
+        Retry-After:
+          description: Seconds until rate limit resets
+          schema:
+            type: integer
+
+  schemas:
+    # Authentication
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    LoginResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    LogoutResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    ValidateTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    ValidateTokenResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        user:
+          $ref: '#/components/schemas/User'
+        roles:
+          type: array
+          items:
+            type: string
+
+    # OAuth
+    OAuthStartResponse:
+      type: object
+      properties:
+        authorization_url:
+          type: string
+          format: uri
+        state:
+          type: string
+
+    # Password Reset
+    RequestPasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    RequestPasswordResetResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    ResetPasswordResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    # User Management
+    CreateUserRequest:
+      type: object
+      required: [email, password, roles]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        roles:
+          type: array
+          items:
+            type: string
+          minItems: 1
+
+    CreateUserResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+
+    ListUsersResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        next_page_token:
+          type: string
+        total_count:
+          type: integer
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        roles:
+          type: array
+          items:
+            type: string
+        is_active:
+          type: boolean
+
+    DeactivateUserResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    ReactivateUserResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    AdminResetPasswordRequest:
+      type: object
+      required: [new_password]
+      properties:
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    AdminResetPasswordResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    DeleteUserResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    # Roles
+    ListRolesResponse:
+      type: object
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+
+    CheckPermissionRequest:
+      type: object
+      required: [resource, action]
+      properties:
+        resource:
+          type: string
+        action:
+          type: string
+
+    CheckPermissionResponse:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        reason:
+          type: string
+
+    # Common Types
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        is_active:
+          type: boolean
+        roles:
+          type: array
+          items:
+            type: string
+        has_password:
+          type: boolean
+        has_google:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+        created_at:
+          type: string
+          format: date-time
+
+    Permission:
+      type: object
+      properties:
+        resource:
+          type: string
+        action:
+          type: string
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: string
+          description: Additional error details (hidden in production)
