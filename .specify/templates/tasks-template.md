@@ -8,9 +8,8 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
-
-**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+**Testing**: TDD mandatory - write tests BEFORE implementation (protobuf → tests → implementation).
+**Organization**: Tasks grouped by user story for independent implementation.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -18,12 +17,13 @@ description: "Task list template for feature implementation"
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
 
-## Path Conventions
+## Go Project Structure
 
-- **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
+- **Protobuf**: `api/proto/v1/` (source), `api/gen/v1/` (generated)
+- **Services**: `services/` (PUBLIC - business logic, returns protobuf)
+- **Handlers**: `handlers/` (PUBLIC - HTTP layer with `*_test.go`)
+- **Models**: `internal/models/` (GORM - internal only)
+- **Fixtures**: `testutil/` (helpers and fixtures)
 
 <!-- 
   ============================================================================
@@ -44,101 +44,85 @@ description: "Task list template for feature implementation"
   ============================================================================
 -->
 
-## Phase 1: Setup (Shared Infrastructure)
+## Phase 1: Setup
 
-**Purpose**: Project initialization and basic structure
-
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
-
----
-
-## Phase 2: Foundational (Blocking Prerequisites)
-
-**Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
-
-**⚠️ CRITICAL**: No user story work can begin until this phase is complete
-
-Examples of foundational tasks (adjust based on your project):
-
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
-
-**Checkpoint**: Foundation ready - user story implementation can now begin in parallel
+- [ ] T001 Initialize Go module with Go 1.25+
+- [ ] T002 [P] Setup `api/proto/v1/` and `api/gen/v1/`
+- [ ] T003 [P] Configure `protoc` with `protoc-gen-go`, `protoc-gen-go-grpc`
+- [ ] T004 [P] Setup `services/`, `handlers/`, `internal/models/`, `testutil/`, `cmd/api/`
 
 ---
 
-## Phase 3: User Story 1 - [Title] (Priority: P1) 🎯 MVP
+## Phase 2: Foundation (⚠️ BLOCKS all user stories)
 
-**Goal**: [Brief description of what this story delivers]
-
-**Independent Test**: [How to verify this story works on its own]
-
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
-
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
-
-- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
-
-### Implementation for User Story 1
-
-- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
-- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T016 [US1] Add validation and error handling
-- [ ] T017 [US1] Add logging for user story 1 operations
-
-**Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
+- [ ] T010 Setup testcontainers-go in `testutil/db.go` (`setupTestDB()`, `truncateTables()`)
+- [ ] T011 [P] Setup error handling in `services/errors.go` and `handlers/error_codes.go`
+- [ ] T012 [P] Create `HandleServiceError()` in `handlers/error_codes.go`
+- [ ] T013 [P] Setup OpenTracing NoopTracer and routing in `handlers/routes.go`
+- [ ] T014 [P] Setup middleware in `internal/middleware/`
+- [ ] T015 Create `services/migrations.go` with `AutoMigrate()` function
 
 ---
 
-## Phase 4: User Story 2 - [Title] (Priority: P2)
+## Phase 3: User Story 1 - [Title] (P1) 🎯 MVP
 
-**Goal**: [Brief description of what this story delivers]
+**Goal**: [Brief description]  
+**Acceptance Scenarios**: US1-AS1, US1-AS2
 
-**Independent Test**: [How to verify this story works on its own]
+### Step 1: Protobuf (Design) 📝
 
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
+- [ ] T030 [P] [US1] Define request/response messages in `api/proto/v1/[entity]_service.proto`
+- [ ] T031 [US1] Add validation rules, run `protoc`, commit generated code
 
-- [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+### Step 2: Tests (Red) 🔴
 
-### Implementation for User Story 2
+- [ ] T035 [P] [US1] Create test fixtures in `testutil/fixtures.go`
+- [ ] T036 [US1] Write tests for US1-AS1, US1-AS2 in `handlers/[entity]_handler_test.go`
+- [ ] T037 [US1] Add ALL edge case tests (input validation, boundaries, data state, database, HTTP)
+- [ ] T038 [US1] **RUN TESTS** - Verify FAIL (red) ❌
 
-- [ ] T020 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T021 [US2] Implement [Service] in src/services/[service].py
-- [ ] T022 [US2] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T023 [US2] Integrate with User Story 1 components (if needed)
+### Step 3: Implementation (Green) 🟢
 
-**Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
+- [ ] T045 [P] [US1] Create model in `internal/models/`, errors in `services/errors.go`, HTTP codes in `handlers/error_codes.go`
+- [ ] T046 [US1] Implement service in `services/[entity]_service.go` (returns protobuf, uses context)
+- [ ] T047 [US1] Implement handler in `handlers/[entity]_handler.go` (thin wrapper)
+- [ ] T048 [US1] Add routes to `handlers/routes.go`, update `services/migrations.go`
+- [ ] T049 [US1] Add OpenTracing spans to handler and service
+- [ ] T050 [US1] **RUN TESTS** - Verify PASS (green) ✅
+
+### Step 4: Refactor ♻️
+
+- [ ] T060 [US1] Refactor (extract helpers, improve errors, add comments)
+- [ ] T061 [US1] **RUN TESTS** after each change ✅, run with `-race` ✅
+
+### Step 5: Verify ✅
+
+- [ ] T065 [US1] Run `go test -cover` - verify >80% coverage
+- [ ] T066 [US1] Verify ALL errors, scenarios, and edge cases tested
 
 ---
 
-## Phase 5: User Story 3 - [Title] (Priority: P3)
+## Phase 4: User Story 2 - [Title] (P2)
 
-**Goal**: [Brief description of what this story delivers]
+**Goal**: [Brief description]  
+**Acceptance Scenarios**: US2-AS1, US2-AS2
 
-**Independent Test**: [How to verify this story works on its own]
+### TDD Cycle (Same Pattern)
 
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
+- [ ] T080 [US2] Protobuf → Generate code
+- [ ] T081 [US2] Write tests (US2-AS1, US2-AS2 + edge cases) → Verify FAIL ❌
+- [ ] T082 [US2] Implement (model, errors, service, handler, routes) → RUN TESTS → Verify PASS ✅
+- [ ] T083 [US2] Refactor → Run tests after each change ✅
+- [ ] T084 [US2] Coverage analysis → Verify >80%
 
-- [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+---
 
-### Implementation for User Story 3
+## Phase 5: User Story 3 - [Title] (P3)
 
-- [ ] T026 [P] [US3] Create [Entity] model in src/models/[entity].py
-- [ ] T027 [US3] Implement [Service] in src/services/[service].py
-- [ ] T028 [US3] Implement [endpoint/feature] in src/[location]/[file].py
+**Goal**: [Brief description]  
+**Acceptance Scenarios**: US3-AS1, US3-AS2
 
-**Checkpoint**: All user stories should now be independently functional
+- [ ] T100 [US3] Protobuf → Tests → Implement → Refactor → Verify (same TDD cycle)
 
 ---
 
@@ -146,106 +130,68 @@ Examples of foundational tasks (adjust based on your project):
 
 ---
 
-## Phase N: Polish & Cross-Cutting Concerns
+## Phase N: Polish
 
-**Purpose**: Improvements that affect multiple user stories
-
-- [ ] TXXX [P] Documentation updates in docs/
-- [ ] TXXX Code cleanup and refactoring
-- [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
-- [ ] TXXX Security hardening
-- [ ] TXXX Run quickstart.md validation
+- [ ] T200 [P] Run `go test -cover ./...` - verify >80%, `go test -race ./...`, `go vet ./...`
+- [ ] T201 [P] Verify ALL errors/scenarios tested, services in public packages
+- [ ] T202 Code cleanup: Remove temp files, comments explain WHY
+- [ ] T203 Security: Review SQL injection/XSS prevention
+- [ ] T204 Update README
 
 ---
 
-## Dependencies & Execution Order
+## Execution Order
 
-### Phase Dependencies
+**Phase Dependencies**:
+- Phase 1 (Setup) → Phase 2 (Foundation) → Phase 3+ (User Stories) → Phase N (Polish)
+- Foundation BLOCKS all user stories
+- User stories can proceed in parallel after Foundation
 
-- **Setup (Phase 1)**: No dependencies - can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
-- **User Stories (Phase 3+)**: All depend on Foundational phase completion
-  - User stories can then proceed in parallel (if staffed)
-  - Or sequentially in priority order (P1 → P2 → P3)
-- **Polish (Final Phase)**: Depends on all desired user stories being complete
+**TDD Cycle** (Constitution Principle VI):
+- Protobuf → Tests (red) → Implementation (green) → Refactor → Verify
+- Tests BEFORE implementation (mandatory)
+- Run tests after EVERY code change
+- Story complete ONLY when all tests pass
 
-### User Story Dependencies
-
-- **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
-- **User Story 2 (P2)**: Can start after Foundational (Phase 2) - May integrate with US1 but should be independently testable
-- **User Story 3 (P3)**: Can start after Foundational (Phase 2) - May integrate with US1/US2 but should be independently testable
-
-### Within Each User Story
-
-- Tests (if included) MUST be written and FAIL before implementation
-- Models before services
-- Services before endpoints
-- Core implementation before integration
-- Story complete before moving to next priority
-
-### Parallel Opportunities
-
-- All Setup tasks marked [P] can run in parallel
-- All Foundational tasks marked [P] can run in parallel (within Phase 2)
-- Once Foundational phase completes, all user stories can start in parallel (if team capacity allows)
-- All tests for a user story marked [P] can run in parallel
-- Models within a story marked [P] can run in parallel
-- Different user stories can be worked on in parallel by different team members
-
----
-
-## Parallel Example: User Story 1
-
-```bash
-# Launch all tests for User Story 1 together (if tests requested):
-Task: "Contract test for [endpoint] in tests/contract/test_[name].py"
-Task: "Integration test for [user journey] in tests/integration/test_[name].py"
-
-# Launch all models for User Story 1 together:
-Task: "Create [Entity1] model in src/models/[entity1].py"
-Task: "Create [Entity2] model in src/models/[entity2].py"
-```
-
----
+**Parallel**: Tasks marked [P] can run in parallel
 
 ## Implementation Strategy
 
-### MVP First (User Story 1 Only)
+**MVP First** (Story 1 only): Setup → Foundation → US1 (TDD) → Validate → Deploy
 
-1. Complete Phase 1: Setup
-2. Complete Phase 2: Foundational (CRITICAL - blocks all stories)
-3. Complete Phase 3: User Story 1
-4. **STOP and VALIDATE**: Test User Story 1 independently
-5. Deploy/demo if ready
+**Incremental**: Each story follows TDD cycle (Protobuf → Red → Green → Refactor → Verify), checkpoint after each
 
-### Incremental Delivery
-
-1. Complete Setup + Foundational → Foundation ready
-2. Add User Story 1 → Test independently → Deploy/Demo (MVP!)
-3. Add User Story 2 → Test independently → Deploy/Demo
-4. Add User Story 3 → Test independently → Deploy/Demo
-5. Each story adds value without breaking previous stories
-
-### Parallel Team Strategy
-
-With multiple developers:
-
-1. Team completes Setup + Foundational together
-2. Once Foundational is done:
-   - Developer A: User Story 1
-   - Developer B: User Story 2
-   - Developer C: User Story 3
-3. Stories complete and integrate independently
+**Parallel Team**: Complete Foundation together, then stories in parallel (coordinate on protobuf/fixtures)
 
 ---
 
 ## Notes
 
-- [P] tasks = different files, no dependencies
-- [Story] label maps task to specific user story for traceability
-- Each user story should be independently completable and testable
-- Verify tests fail before implementing
-- Commit after each task or logical group
-- Stop at any checkpoint to validate story independently
-- Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence
+**Conventions**:
+- [P] = parallel, [US#] = user story mapping
+- Tests BEFORE implementation (TDD mandatory, Principle VI)
+- Story complete ONLY when all tests pass
+
+**Code Organization**:
+- Services/handlers: PUBLIC packages (return protobuf)
+- Models: `internal/models/` (GORM, internal only)
+- Protobuf: `api/proto/v1/` (source), `api/gen/v1/` (generated)
+
+**Testing Requirements** (Constitution Principles I-IX):
+- **I. Integration Testing**: Real PostgreSQL via testcontainers (NO mocking in implementation code). Mocking ONLY in test code (`*_test.go`) for external systems with justification. Test setup uses public APIs and dependency injection (NOT direct `internal/` package imports).
+- **II. Table-Driven Design**: Test cases as slices of structs with descriptive `name` fields, execute using `t.Run(testCase.name, func(t *testing.T) {...})`
+- **III. Edge Cases MANDATORY**: Input validation (empty/nil, invalid formats, SQL injection, XSS), boundaries (zero/negative/max), auth (missing/expired/invalid tokens), data state (404s, conflicts), database (constraint violations, foreign key failures), HTTP (wrong methods, missing headers, invalid content-types, malformed JSON)
+- **IV. ServeHTTP Testing**: Call root mux ServeHTTP (NOT individual handlers) using `httptest.ResponseRecorder`, identical routing configuration from shared routes package, `r.PathValue()` for parameters
+- **V. Protobuf Structs**: Use `cmp.Diff()` with `protocmp.Transform()`. Derive expected from TEST FIXTURES (request data, database fixtures, config). Copy from response ONLY for truly random: UUIDs, timestamps, crypto-rand tokens. Read `testutil/fixtures.go` for defaults before writing assertions.
+- **VI. Continuous Test Verification**: Run `go test -v ./...` and `go test -v -race ./...` after EVERY change. Fix failures immediately (NO skipping/disabling tests).
+- **VII. Root Cause Tracing**: Trace backward through call chain, fix source NOT symptoms, NEVER remove/weaken tests
+- **VIII. Acceptance Scenario Coverage**: Every US#-AS# has corresponding test with scenario ID in test case name
+- **IX. Coverage >80%**: Run `go test -coverprofile=coverage.out ./...`, analyze with `go tool cover -func=coverage.out`
+
+**Architecture Requirements** (Constitution Principles X-XIII):
+- **X. Service Layer Architecture**: Business logic in Go interfaces (service layer), services in public packages (NOT `internal/`), handlers thin wrappers. Builder pattern: `NewService(db).WithLogger(log).Build()`. Service methods use protobuf structs for ALL parameters/return types (NO primitives, NO maps). `cmd/main.go` calls ONLY handlers/services (NEVER `internal/`).
+- **XI. Distributed Tracing**: HTTP endpoints create OpenTracing spans with operation name (e.g., "POST /api/products"). Services create child spans. Database: ONE span per transaction (NOT per query). External calls propagate trace context. Errors set `span.SetTag("error", true)`. Dev uses `opentracing.NoopTracer{}`.
+- **XII. Context-Aware Operations**: Service methods accept `context.Context` as first parameter. Handlers use `r.Context()`. Database uses `db.WithContext(ctx)`. External calls use `http.NewRequestWithContext(ctx, ...)`. Long-running ops check cancellation periodically. Tests verify cancellation behavior.
+- **XIII. Error Handling Strategy**: Service Layer defines sentinel errors in `services/errors.go`, wraps with `fmt.Errorf("%w")`. HTTP Layer defines error codes in `handlers/error_codes.go` with `ServiceErr` field. `HandleServiceError()` provides automatic mapping (NO switch statements). **Environment-Aware Details**: ErrorResponse includes `details` field with full error chain by default; hidden when `HIDE_ERROR_DETAILS=true`. `RespondWithError(w, errCode, err)` always passes original error. ALL errors have test cases. Tests use error code definitions (NOT literal strings).
+
+**Avoid**: Implementing before tests, skipping edge cases, removing tests to pass
