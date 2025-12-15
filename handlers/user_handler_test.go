@@ -8,11 +8,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	pb "github.com/user/spa_auth/api/gen/auth/v1"
 	"github.com/user/spa_auth/handlers"
 	"github.com/user/spa_auth/services"
 	"github.com/user/spa_auth/testutil"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestUserHandler_CreateUser(t *testing.T) {
@@ -48,7 +50,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		userID         string
 		expectedStatus int
 		expectedCode   string
-		validateResp   func(t *testing.T, resp *pb.CreateUserResponse)
+		validateResp   func(t *testing.T, resp *pb.CreateUserResponse, req *pb.CreateUserRequest)
 	}{
 		{
 			name:     "US3-AS1: Super admin creates new user with email, password, and role",
@@ -60,15 +62,23 @@ func TestUserHandler_CreateUser(t *testing.T) {
 			},
 			userID:         superAdmin.ID.String(),
 			expectedStatus: http.StatusCreated,
-			validateResp: func(t *testing.T, resp *pb.CreateUserResponse) {
+			validateResp: func(t *testing.T, resp *pb.CreateUserResponse, req *pb.CreateUserRequest) {
 				if resp.User == nil {
 					t.Fatal("Expected user in response")
 				}
-				if resp.User.Email != "newuser@example.com" {
-					t.Errorf("Expected email newuser@example.com, got %s", resp.User.Email)
+				// Use cmp.Diff with protocmp.Transform() per constitution
+				expected := &pb.User{
+					Id:          resp.User.Id,          // Random UUID from response
+					Email:       req.Email,             // From request fixture
+					IsActive:    true,                  // Default for new user
+					HasPassword: true,                  // User has password
+					Roles:       req.Roles,             // From request fixture
+					Sections:    resp.User.Sections,    // Dynamic from DB
+					CreatedAt:   resp.User.CreatedAt,   // Timestamp from response
+					CreatedBy:   resp.User.CreatedBy,   // UUID of creator from response
 				}
-				if !resp.User.IsActive {
-					t.Error("Expected user to be active")
+				if diff := cmp.Diff(expected, resp.User, protocmp.Transform()); diff != "" {
+					t.Errorf("User mismatch (-want +got):\n%s", diff)
 				}
 			},
 		},
@@ -165,7 +175,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 				if err := protojson.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 					t.Fatalf("Failed to parse response: %v", err)
 				}
-				tc.validateResp(t, &resp)
+				tc.validateResp(t, &resp, tc.request)
 			}
 		})
 	}

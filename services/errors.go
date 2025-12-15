@@ -25,4 +25,5 @@ var (
 	ErrOAuthStateMismatch   = errors.New("oauth state mismatch")
 	ErrInternalError        = errors.New("internal server error")
 	ErrInvalidID            = errors.New("invalid ID format")
+	ErrInvalidRoleName      = errors.New("invalid role name")
 )

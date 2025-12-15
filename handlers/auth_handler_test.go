@@ -8,11 +8,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	pb "github.com/user/spa_auth/api/gen/auth/v1"
 	"github.com/user/spa_auth/handlers"
 	"github.com/user/spa_auth/services"
 	"github.com/user/spa_auth/testutil"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestAuthHandler_Login(t *testing.T) {
@@ -58,7 +60,7 @@ func TestAuthHandler_Login(t *testing.T) {
 		request        *pb.LoginRequest
 		expectedStatus int
 		expectedCode   string
-		validateResp   func(t *testing.T, resp *pb.LoginResponse)
+		validateResp   func(t *testing.T, resp *pb.LoginResponse, req *pb.LoginRequest)
 	}{
 		{
 			name:     "US1-AS1: Successful login with valid credentials",
@@ -68,15 +70,25 @@ func TestAuthHandler_Login(t *testing.T) {
 				Password: "userpass123",
 			},
 			expectedStatus: http.StatusOK,
-			validateResp: func(t *testing.T, resp *pb.LoginResponse) {
+			validateResp: func(t *testing.T, resp *pb.LoginResponse, req *pb.LoginRequest) {
 				if resp.AccessToken == "" {
 					t.Error("Expected accessToken in response")
 				}
 				if resp.User == nil {
-					t.Error("Expected user in response")
+					t.Fatal("Expected user in response")
 				}
-				if resp.User.Email != "user@example.com" {
-					t.Errorf("Expected email user@example.com, got %s", resp.User.Email)
+				// Use cmp.Diff with protocmp.Transform() per constitution
+				expected := &pb.User{
+					Id:          resp.User.Id,          // Random UUID from response
+					Email:       req.Email,             // From request fixture
+					IsActive:    true,                  // Default for active user
+					HasPassword: true,                  // User has password (from fixture)
+					Roles:       resp.User.Roles,       // Dynamic from DB
+					Sections:    resp.User.Sections,    // Dynamic from DB
+					CreatedAt:   resp.User.CreatedAt,   // Timestamp from response
+				}
+				if diff := cmp.Diff(expected, resp.User, protocmp.Transform()); diff != "" {
+					t.Errorf("User mismatch (-want +got):\n%s", diff)
 				}
 			},
 		},
@@ -160,7 +172,7 @@ func TestAuthHandler_Login(t *testing.T) {
 				if err := protojson.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 					t.Fatalf("Failed to parse success response: %v", err)
 				}
-				tc.validateResp(t, &resp)
+				tc.validateResp(t, &resp, tc.request)
 			}
 		})
 	}

@@ -124,6 +124,12 @@ var (
 		HTTPStatus: http.StatusForbidden,
 		ServiceErr: services.ErrOAuthEmailNotFound,
 	}
+	ErrCodeSectionNotFound = ErrorCode{
+		Code:       "SECTION_NOT_FOUND",
+		Message:    "SPA section not found",
+		HTTPStatus: http.StatusNotFound,
+		ServiceErr: services.ErrSectionNotFound,
+	}
 	ErrCodeInternalError = ErrorCode{
 		Code:       "INTERNAL_ERROR",
 		Message:    "An internal error occurred",
@@ -135,6 +141,12 @@ var (
 		Message:    "Invalid ID format",
 		HTTPStatus: http.StatusBadRequest,
 		ServiceErr: services.ErrInvalidID,
+	}
+	ErrCodeInvalidRoleName = ErrorCode{
+		Code:       "INVALID_ROLE_NAME",
+		Message:    "Invalid role name",
+		HTTPStatus: http.StatusBadRequest,
+		ServiceErr: services.ErrInvalidRoleName,
 	}
 	ErrCodeBadRequest = ErrorCode{
 		Code:       "BAD_REQUEST",
@@ -170,6 +182,7 @@ var errorCodeRegistry = []ErrorCode{
 	ErrCodeOAuthEmailNotFound,
 	ErrCodeSectionNotFound,
 	ErrCodeInvalidID,
+	ErrCodeInvalidRoleName,
 	ErrCodeInternalError,
 }
 

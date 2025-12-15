@@ -41,7 +41,7 @@ func (b *roleServiceBuilder) Build() RoleService {
 
 func (s *roleService) CreateRole(ctx context.Context, req *pb.CreateRoleRequest, createdBy string) (*pb.CreateRoleResponse, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("role name: %w", ErrRoleNotFound)
+		return nil, fmt.Errorf("role name: %w", ErrInvalidRoleName)
 	}
 
 	var existing models.Role
@@ -113,7 +113,7 @@ func (s *roleService) GetRole(ctx context.Context, req *pb.GetRoleRequest) (*pb.
 	case *pb.GetRoleRequest_Id:
 		roleID, parseErr := uuid.Parse(id.Id)
 		if parseErr != nil {
-			return nil, fmt.Errorf("invalid role ID: %w", parseErr)
+			return nil, fmt.Errorf("invalid role ID: %w", ErrInvalidID)
 		}
 		err = s.db.WithContext(ctx).
 			Preload("RolePermissions.Section").
@@ -236,7 +236,7 @@ func (s *roleService) UpdateRole(ctx context.Context, req *pb.UpdateRoleRequest)
 func (s *roleService) DeleteRole(ctx context.Context, req *pb.DeleteRoleRequest) (*pb.DeleteRoleResponse, error) {
 	roleID, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, fmt.Errorf("invalid role ID: %w", err)
+		return nil, fmt.Errorf("invalid role ID: %w", ErrInvalidID)
 	}
 
 	var role models.Role

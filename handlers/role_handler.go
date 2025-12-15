@@ -151,13 +151,13 @@ func (h *RoleHandler) ListSpaSections(w http.ResponseWriter, r *http.Request) {
 func (h *RoleHandler) CheckSectionAccess(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	userID := r.URL.Query().Get("user_id")
-	sectionKey := r.URL.Query().Get("section_key")
+	var req pb.CheckSectionAccessRequest
+	if err := DecodeProtoJSON(r, &req); err != nil {
+		RespondWithError(w, ErrCodeBadRequest, err)
+		return
+	}
 
-	resp, err := h.roleService.CheckSectionAccess(ctx, &pb.CheckSectionAccessRequest{
-		UserId:     userID,
-		SectionKey: sectionKey,
-	})
+	resp, err := h.roleService.CheckSectionAccess(ctx, &req)
 	if err != nil {
 		HandleServiceError(w, err)
 		return
