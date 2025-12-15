@@ -5,19 +5,20 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	pb "github.com/user/spa_auth/api/gen/auth/v1"
 	"github.com/user/spa_auth/internal/models"
 	"gorm.io/gorm"
 )
 
 type UserService interface {
-	CreateUser(ctx context.Context, email, password string, roleIDs []uuid.UUID, createdBy uuid.UUID) (*models.User, error)
-	GetUser(ctx context.Context, userID uuid.UUID) (*models.User, error)
-	ListUsers(ctx context.Context, includeInactive bool, limit, offset int) ([]*models.User, int64, error)
-	UpdateUser(ctx context.Context, userID uuid.UUID, email *string, roleIDs []uuid.UUID, isActive *bool) (*models.User, error)
-	DeactivateUser(ctx context.Context, userID uuid.UUID) error
-	ReactivateUser(ctx context.Context, userID uuid.UUID) error
-	DeleteUser(ctx context.Context, userID uuid.UUID) error
-	AdminResetPassword(ctx context.Context, userID uuid.UUID, newPassword string) error
+	CreateUser(ctx context.Context, req *pb.CreateUserRequest, createdBy string) (*pb.CreateUserResponse, error)
+	GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUserResponse, error)
+	ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*pb.ListUsersResponse, error)
+	UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UpdateUserResponse, error)
+	DeactivateUser(ctx context.Context, req *pb.DeactivateUserRequest) (*pb.DeactivateUserResponse, error)
+	ReactivateUser(ctx context.Context, req *pb.ReactivateUserRequest) (*pb.ReactivateUserResponse, error)
+	DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error)
+	AdminResetPassword(ctx context.Context, req *pb.AdminResetPasswordRequest) (*pb.AdminResetPasswordResponse, error)
 }
 
 type userService struct {
@@ -54,26 +55,43 @@ func (b *userServiceBuilder) Build() UserService {
 	}
 }
 
-func (s *userService) CreateUser(ctx context.Context, email, password string, roleIDs []uuid.UUID, createdBy uuid.UUID) (*models.User, error) {
-	if email == "" {
+func (s *userService) CreateUser(ctx context.Context, req *pb.CreateUserRequest, createdBy string) (*pb.CreateUserResponse, error) {
+	if req.Email == "" {
 		return nil, fmt.Errorf("email: %w", ErrInvalidEmail)
 	}
 
-	hash, err := s.passwordService.HashPassword(password)
+	hash, err := s.passwordService.HashPassword(req.Password)
 	if err != nil {
 		return nil, err
 	}
 
 	var existing models.User
-	if err := s.db.WithContext(ctx).Where("email = ?", email).First(&existing).Error; err == nil {
+	if err := s.db.WithContext(ctx).Where("email = ?", req.Email).First(&existing).Error; err == nil {
 		return nil, ErrUserAlreadyExists
 	}
 
+	createdByUUID, err := uuid.Parse(createdBy)
+	if err != nil {
+		return nil, fmt.Errorf("invalid createdBy: %w", err)
+	}
+
 	user := &models.User{
-		Email:        email,
+		Email:        req.Email,
 		PasswordHash: &hash,
 		IsActive:     true,
-		CreatedBy:    &createdBy,
+		CreatedBy:    &createdByUUID,
+	}
+
+	var roleIDs []uuid.UUID
+	for _, roleName := range req.Roles {
+		var role models.Role
+		if err := s.db.WithContext(ctx).Where("name = ?", roleName).First(&role).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil, fmt.Errorf("role %s: %w", roleName, ErrRoleNotFound)
+			}
+			return nil, fmt.Errorf("find role: %w", err)
+		}
+		roleIDs = append(roleIDs, role.ID)
 	}
 
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -85,7 +103,7 @@ func (s *userService) CreateUser(ctx context.Context, email, password string, ro
 			userRole := &models.UserRole{
 				UserID:     user.ID,
 				RoleID:     roleID,
-				AssignedBy: &createdBy,
+				AssignedBy: &createdByUUID,
 			}
 			if err := tx.Create(userRole).Error; err != nil {
 				return fmt.Errorf("assign role: %w", err)
@@ -99,13 +117,26 @@ func (s *userService) CreateUser(ctx context.Context, email, password string, ro
 		return nil, err
 	}
 
-	return user, nil
+	if err := s.db.WithContext(ctx).Preload("UserRoles.Role.RolePermissions.Section").First(user, user.ID).Error; err != nil {
+		return nil, fmt.Errorf("reload user: %w", err)
+	}
+
+	roles, sections := extractRolesAndSections(user.UserRoles)
+
+	return &pb.CreateUserResponse{
+		User: modelToProtoUser(user, roles, sections),
+	}, nil
 }
 
-func (s *userService) GetUser(ctx context.Context, userID uuid.UUID) (*models.User, error) {
+func (s *userService) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUserResponse, error) {
+	userID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
 	var user models.User
-	err := s.db.WithContext(ctx).
-		Preload("UserRoles.Role").
+	err = s.db.WithContext(ctx).
+		Preload("UserRoles.Role.RolePermissions.Section").
 		Where("id = ?", userID).
 		First(&user).Error
 
@@ -116,37 +147,78 @@ func (s *userService) GetUser(ctx context.Context, userID uuid.UUID) (*models.Us
 		return nil, fmt.Errorf("find user: %w", err)
 	}
 
-	return &user, nil
+	roles, sections := extractRolesAndSections(user.UserRoles)
+
+	return &pb.GetUserResponse{
+		User: modelToProtoUser(&user, roles, sections),
+	}, nil
 }
 
-func (s *userService) ListUsers(ctx context.Context, includeInactive bool, limit, offset int) ([]*models.User, int64, error) {
-	var users []*models.User
+func (s *userService) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*pb.ListUsersResponse, error) {
+	var users []models.User
 	var total int64
 
+	pageSize := int(req.PageSize)
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
 	query := s.db.WithContext(ctx).Model(&models.User{})
-	if !includeInactive {
+	if !req.IncludeInactive {
 		query = query.Where("is_active = ?", true)
 	}
 
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("count users: %w", err)
+		return nil, fmt.Errorf("count users: %w", err)
+	}
+
+	offset := 0
+	if req.PageToken != "" {
+		var err error
+		offset, err = decodePageToken(req.PageToken)
+		if err != nil {
+			return nil, fmt.Errorf("invalid page token: %w", err)
+		}
 	}
 
 	err := query.
-		Preload("UserRoles.Role").
-		Limit(limit).
+		Preload("UserRoles.Role.RolePermissions.Section").
+		Limit(pageSize).
 		Offset(offset).
 		Order("created_at DESC").
 		Find(&users).Error
 
 	if err != nil {
-		return nil, 0, fmt.Errorf("list users: %w", err)
+		return nil, fmt.Errorf("list users: %w", err)
 	}
 
-	return users, total, nil
+	var pbUsers []*pb.User
+	for _, user := range users {
+		roles, sections := extractRolesAndSections(user.UserRoles)
+		pbUsers = append(pbUsers, modelToProtoUser(&user, roles, sections))
+	}
+
+	var nextPageToken string
+	if offset+pageSize < int(total) {
+		nextPageToken = encodePageToken(offset + pageSize)
+	}
+
+	return &pb.ListUsersResponse{
+		Users:         pbUsers,
+		NextPageToken: nextPageToken,
+		TotalCount:    int32(total),
+	}, nil
 }
 
-func (s *userService) UpdateUser(ctx context.Context, userID uuid.UUID, email *string, roleIDs []uuid.UUID, isActive *bool) (*models.User, error) {
+func (s *userService) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UpdateUserResponse, error) {
+	userID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
 	var user models.User
 	if err := s.db.WithContext(ctx).Where("id = ?", userID).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -155,19 +227,19 @@ func (s *userService) UpdateUser(ctx context.Context, userID uuid.UUID, email *s
 		return nil, fmt.Errorf("find user: %w", err)
 	}
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		updates := make(map[string]interface{})
 
-		if email != nil && *email != "" {
+		if req.Email != nil && *req.Email != "" {
 			var existing models.User
-			if err := tx.Where("email = ? AND id != ?", *email, userID).First(&existing).Error; err == nil {
+			if err := tx.Where("email = ? AND id != ?", *req.Email, userID).First(&existing).Error; err == nil {
 				return ErrUserAlreadyExists
 			}
-			updates["email"] = *email
+			updates["email"] = *req.Email
 		}
 
-		if isActive != nil {
-			updates["is_active"] = *isActive
+		if req.IsActive != nil {
+			updates["is_active"] = *req.IsActive
 		}
 
 		if len(updates) > 0 {
@@ -176,15 +248,22 @@ func (s *userService) UpdateUser(ctx context.Context, userID uuid.UUID, email *s
 			}
 		}
 
-		if len(roleIDs) > 0 {
+		if len(req.Roles) > 0 {
 			if err := tx.Delete(&models.UserRole{}, "user_id = ?", userID).Error; err != nil {
 				return fmt.Errorf("delete old roles: %w", err)
 			}
 
-			for _, roleID := range roleIDs {
+			for _, roleName := range req.Roles {
+				var role models.Role
+				if err := tx.Where("name = ?", roleName).First(&role).Error; err != nil {
+					if err == gorm.ErrRecordNotFound {
+						return fmt.Errorf("role %s: %w", roleName, ErrRoleNotFound)
+					}
+					return fmt.Errorf("find role: %w", err)
+				}
 				userRole := &models.UserRole{
 					UserID: userID,
-					RoleID: roleID,
+					RoleID: role.ID,
 				}
 				if err := tx.Create(userRole).Error; err != nil {
 					return fmt.Errorf("assign role: %w", err)
@@ -199,64 +278,100 @@ func (s *userService) UpdateUser(ctx context.Context, userID uuid.UUID, email *s
 		return nil, err
 	}
 
-	return s.GetUser(ctx, userID)
+	getResp, err := s.GetUser(ctx, &pb.GetUserRequest{Id: req.Id})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.UpdateUserResponse{User: getResp.User}, nil
 }
 
-func (s *userService) DeactivateUser(ctx context.Context, userID uuid.UUID) error {
+func (s *userService) DeactivateUser(ctx context.Context, req *pb.DeactivateUserRequest) (*pb.DeactivateUserResponse, error) {
+	userID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
 	result := s.db.WithContext(ctx).
 		Model(&models.User{}).
 		Where("id = ?", userID).
 		Update("is_active", false)
 
 	if result.Error != nil {
-		return fmt.Errorf("deactivate user: %w", result.Error)
+		return nil, fmt.Errorf("deactivate user: %w", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
-		return ErrUserNotFound
+		return nil, ErrUserNotFound
 	}
 
 	if s.sessionService != nil {
-		return s.sessionService.InvalidateAllUserSessions(ctx, userID)
+		if err := s.sessionService.InvalidateAllUserSessions(ctx, userID); err != nil {
+			return nil, fmt.Errorf("invalidate sessions: %w", err)
+		}
 	}
 
-	return nil
+	return &pb.DeactivateUserResponse{
+		Success: true,
+		Message: "User deactivated successfully",
+	}, nil
 }
 
-func (s *userService) ReactivateUser(ctx context.Context, userID uuid.UUID) error {
+func (s *userService) ReactivateUser(ctx context.Context, req *pb.ReactivateUserRequest) (*pb.ReactivateUserResponse, error) {
+	userID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
 	result := s.db.WithContext(ctx).
 		Model(&models.User{}).
 		Where("id = ?", userID).
 		Update("is_active", true)
 
 	if result.Error != nil {
-		return fmt.Errorf("reactivate user: %w", result.Error)
+		return nil, fmt.Errorf("reactivate user: %w", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
-		return ErrUserNotFound
+		return nil, ErrUserNotFound
 	}
 
-	return nil
+	return &pb.ReactivateUserResponse{
+		Success: true,
+		Message: "User reactivated successfully",
+	}, nil
 }
 
-func (s *userService) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+func (s *userService) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
+	userID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
 	result := s.db.WithContext(ctx).Delete(&models.User{}, "id = ?", userID)
 	if result.Error != nil {
-		return fmt.Errorf("delete user: %w", result.Error)
+		return nil, fmt.Errorf("delete user: %w", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
-		return ErrUserNotFound
+		return nil, ErrUserNotFound
 	}
 
-	return nil
+	return &pb.DeleteUserResponse{
+		Success: true,
+		Message: "User deleted successfully",
+	}, nil
 }
 
-func (s *userService) AdminResetPassword(ctx context.Context, userID uuid.UUID, newPassword string) error {
-	hash, err := s.passwordService.HashPassword(newPassword)
+func (s *userService) AdminResetPassword(ctx context.Context, req *pb.AdminResetPasswordRequest) (*pb.AdminResetPasswordResponse, error) {
+	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	hash, err := s.passwordService.HashPassword(req.NewPassword)
+	if err != nil {
+		return nil, err
 	}
 
 	result := s.db.WithContext(ctx).
@@ -265,12 +380,25 @@ func (s *userService) AdminResetPassword(ctx context.Context, userID uuid.UUID, 
 		Update("password_hash", hash)
 
 	if result.Error != nil {
-		return fmt.Errorf("reset password: %w", result.Error)
+		return nil, fmt.Errorf("reset password: %w", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
-		return ErrUserNotFound
+		return nil, ErrUserNotFound
 	}
 
-	return nil
+	return &pb.AdminResetPasswordResponse{
+		Success: true,
+		Message: "Password reset successfully",
+	}, nil
+}
+
+func encodePageToken(offset int) string {
+	return fmt.Sprintf("%d", offset)
+}
+
+func decodePageToken(token string) (int, error) {
+	var offset int
+	_, err := fmt.Sscanf(token, "%d", &offset)
+	return offset, err
 }
